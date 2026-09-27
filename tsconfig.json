@@ -1,19 +1,15 @@
 {
   "compilerOptions": {
-    "target": "ESNext",
-    "module": "ESNext",
-    "moduleResolution": "node",
+    "target": "ES2023",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
     "outDir": "./dist",
     "rootDir": "./src",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "preserveSymlinks": true,
-    "baseUrl": "./src",
-    "paths": {
-      "/*": ["./*"]
-    }
+    "types": ["node"]
   },
   "include": [
     "src/**/*"

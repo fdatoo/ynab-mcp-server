@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi, Mock } from 'vitest';
 import * as ynab from 'ynab';
-import * as DeleteTransactionTool from '../tools/DeleteTransactionTool';
+import * as DeleteTransactionTool from '../tools/DeleteTransactionTool.js';
 
 vi.mock('ynab');
 
