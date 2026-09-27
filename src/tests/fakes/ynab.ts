@@ -143,6 +143,7 @@ type StoredScheduledTransaction = Omit<
 interface PlanState {
   id: string;
   name: string;
+  lastModifiedOn: string | undefined;
   currency: ynab.CurrencyFormat;
   dateFormat: ynab.DateFormat;
   accounts: Map<string, ynab.Account>;
@@ -455,6 +456,60 @@ interface CreateOutcome {
   duplicateImportId?: string;
 }
 
+/**
+ * Links a transaction to a new mirror on `targetAccountId`, the way selecting
+ * an account's transfer payee does on either create or update.
+ */
+function createTransferMirror(plan: PlanState, original: StoredTransaction, targetAccountId: string): void {
+  const sourceAccount = plan.accounts.get(original.account_id)!;
+  const mirrorId = nextId("txn");
+  const mirror: StoredTransaction = {
+    id: mirrorId,
+    date: original.date,
+    amount: -original.amount,
+    memo: original.memo,
+    cleared: original.cleared,
+    approved: original.approved,
+    flag_color: undefined,
+    flag_name: undefined,
+    account_id: targetAccountId,
+    payee_id: sourceAccount.transfer_payee_id,
+    category_id: undefined,
+    transfer_account_id: original.account_id,
+    transfer_transaction_id: original.id,
+    matched_transaction_id: undefined,
+    import_id: undefined,
+    import_payee_name: undefined,
+    import_payee_name_original: undefined,
+    debt_transaction_type: undefined,
+    deleted: false,
+    subtransactions: [],
+  };
+  plan.transactions.set(mirrorId, mirror);
+  touch(plan, "transaction", mirrorId);
+  touch(plan, "month", monthOf(mirror.date));
+  original.transfer_account_id = targetAccountId;
+  original.transfer_transaction_id = mirrorId;
+}
+
+/** Builds stored subtransactions for a new split, resolving each line's payee. */
+function buildSubtransactions(plan: PlanState, transactionId: string, subs: ynab.SaveSubTransaction[]): StoredSubtransaction[] {
+  return subs.map((s) => {
+    const { payeeId: subPayeeId } = resolvePayee(plan, s);
+    return {
+      id: nextId("sub"),
+      transaction_id: transactionId,
+      amount: s.amount,
+      memo: s.memo ?? undefined,
+      payee_id: subPayeeId,
+      category_id: s.category_id ?? undefined,
+      transfer_account_id: undefined,
+      transfer_transaction_id: undefined,
+      deleted: false,
+    };
+  });
+}
+
 function createOneTransaction(
   plan: PlanState,
   rawInput: ynab.NewTransaction & { id?: string; transfer_to_account_id?: string }
@@ -477,20 +532,7 @@ function createOneTransaction(
   const isTransfer = !!transferTarget?.transfer_account_id && transferTarget.transfer_account_id !== input.account_id;
 
   const id = nextId("txn", input.id);
-  const subtransactions: StoredSubtransaction[] = (input.subtransactions ?? []).map((s) => {
-    const { payeeId: subPayeeId } = resolvePayee(plan, s);
-    return {
-      id: nextId("sub"),
-      transaction_id: id,
-      amount: s.amount,
-      memo: s.memo ?? undefined,
-      payee_id: subPayeeId,
-      category_id: s.category_id ?? undefined,
-      transfer_account_id: undefined,
-      transfer_transaction_id: undefined,
-      deleted: false,
-    };
-  });
+  const subtransactions = buildSubtransactions(plan, id, input.subtransactions ?? []);
 
   const stored: StoredTransaction = {
     id,
@@ -502,9 +544,9 @@ function createOneTransaction(
     flag_color: input.flag_color ?? undefined,
     flag_name: undefined,
     account_id: input.account_id,
-    payee_id: subtransactions.length ? undefined : payeeId,
+    payee_id: payeeId,
     category_id: subtransactions.length ? undefined : (input.category_id ?? undefined),
-    transfer_account_id: isTransfer ? (transferTarget!.transfer_account_id ?? undefined) : undefined,
+    transfer_account_id: undefined,
     transfer_transaction_id: undefined,
     matched_transaction_id: undefined,
     import_id: input.import_id ?? undefined,
@@ -518,37 +560,7 @@ function createOneTransaction(
   touch(plan, "transaction", id);
   touch(plan, "month", monthOf(stored.date));
 
-  if (isTransfer) {
-    const targetAccountId = transferTarget!.transfer_account_id!;
-    const sourceAccount = plan.accounts.get(input.account_id)!;
-    const mirrorId = nextId("txn");
-    const mirror: StoredTransaction = {
-      id: mirrorId,
-      date: stored.date,
-      amount: -stored.amount,
-      memo: stored.memo,
-      cleared: stored.cleared,
-      approved: stored.approved,
-      flag_color: undefined,
-      flag_name: undefined,
-      account_id: targetAccountId,
-      payee_id: sourceAccount.transfer_payee_id,
-      category_id: undefined,
-      transfer_account_id: input.account_id,
-      transfer_transaction_id: id,
-      matched_transaction_id: undefined,
-      import_id: undefined,
-      import_payee_name: undefined,
-      import_payee_name_original: undefined,
-      debt_transaction_type: undefined,
-      deleted: false,
-      subtransactions: [],
-    };
-    plan.transactions.set(mirrorId, mirror);
-    touch(plan, "transaction", mirrorId);
-    touch(plan, "month", monthOf(mirror.date));
-    stored.transfer_transaction_id = mirrorId;
-  }
+  if (isTransfer) createTransferMirror(plan, stored, transferTarget!.transfer_account_id!);
 
   return { created: materializeTransaction(plan, stored) };
 }
@@ -560,6 +572,7 @@ function createOneTransaction(
 export interface PlanSeed {
   id?: string;
   name?: string;
+  last_modified_on?: string;
   currency_format?: ynab.CurrencyFormat;
   date_format?: ynab.DateFormat;
   accounts?: ynab.Account[];
@@ -598,6 +611,7 @@ export class FakeYnab {
     const plan: PlanState = {
       id,
       name: seed.name ?? "Test Plan",
+      lastModifiedOn: seed.last_modified_on,
       currency: seed.currency_format ?? USD_CURRENCY,
       dateFormat: seed.date_format ?? DEFAULT_DATE_FORMAT,
       accounts: new Map(),
@@ -698,6 +712,7 @@ export class FakeYnab {
           const summaries: ynab.PlanSummary[] = [...fake.plans.values()].map((plan) => ({
             id: plan.id,
             name: plan.name,
+            last_modified_on: plan.lastModifiedOn,
             date_format: plan.dateFormat,
             currency_format: plan.currency,
           }));
@@ -1162,8 +1177,29 @@ export class FakeYnab {
       if (patch.cleared !== undefined) t.cleared = patch.cleared;
       if (patch.approved !== undefined) t.approved = patch.approved;
       if (patch.flag_color !== undefined) t.flag_color = patch.flag_color ?? undefined;
-      // Subtransactions on an existing split are deliberately left alone: the
-      // real API does not support changing them through an update.
+      if (patch.subtransactions !== undefined) {
+        // The real API rejects an attempt to change the lines of a transaction
+        // that is already a split, but allows turning a plain transaction into
+        // one by supplying subtransactions for the first time.
+        if (t.subtransactions.some((s) => !s.deleted)) {
+          throw ynabError("400", "bad_request", "Updating subtransactions on an existing split transaction is not supported.");
+        }
+        t.subtransactions = buildSubtransactions(plan, t.id, patch.subtransactions);
+        t.category_id = undefined;
+      }
+      // Setting payee_id to an account's transfer payee creates a transfer on
+      // update the same way it does on create, mirroring the new transaction
+      // onto the target account. A transaction that is already a transfer is
+      // left alone here: the real API's rules for editing one further (moving
+      // its amount or date in step with the mirror) are not modeled.
+      if (!t.transfer_transaction_id) {
+        const transferTarget = t.payee_id ? plan.payees.get(t.payee_id) : undefined;
+        const targetAccountId = transferTarget?.transfer_account_id;
+        if (targetAccountId && targetAccountId !== t.account_id) {
+          t.category_id = undefined;
+          createTransferMirror(plan, t, targetAccountId);
+        }
+      }
     }
 
     function createMany(plan: PlanState, data: ynab.PostTransactionsWrapper): ynab.SaveTransactionsResponse {
@@ -1230,19 +1266,25 @@ export class FakeYnab {
             data: { scheduled_transaction: materializeScheduled(plan, stored), server_knowledge: plan.serverKnowledge },
           });
         }),
+      // A real PUT: the whole scheduled transaction is replaced by `save`, so a
+      // field this fake doesn't see is cleared, not preserved. Callers that
+      // want to keep a field must fetch the existing one and pass it back.
       updateScheduledTransaction: (planId: string, scheduledTransactionId: string, data: ynab.PutScheduledTransactionWrapper) =>
         fake.call("scheduledTransactions.updateScheduledTransaction", [planId, scheduledTransactionId, data], () => {
           const plan = fake.getPlan(planId);
           const s = plan.scheduledTransactions.get(scheduledTransactionId);
           if (!s) notFound();
           const save = data.scheduled_transaction;
-          if (save.date !== undefined) s.date_next = save.date;
-          if (save.amount !== undefined) s.amount = save.amount;
-          if (save.payee_id !== undefined || save.payee_name !== undefined) s.payee_id = resolvePayee(plan, save).payeeId;
-          if (save.category_id !== undefined) s.category_id = save.category_id ?? undefined;
-          if (save.memo !== undefined) s.memo = save.memo ?? undefined;
-          if (save.flag_color !== undefined) s.flag_color = save.flag_color ?? undefined;
-          if (save.frequency !== undefined) s.frequency = save.frequency;
+          if (!plan.accounts.has(save.account_id)) notFound();
+          const { payeeId } = resolvePayee(plan, save);
+          s.account_id = save.account_id;
+          s.date_next = save.date;
+          s.amount = save.amount ?? 0;
+          s.payee_id = payeeId;
+          s.category_id = save.category_id ?? undefined;
+          s.memo = save.memo ?? undefined;
+          s.flag_color = save.flag_color ?? undefined;
+          s.frequency = save.frequency ?? "never";
           touch(plan, "scheduledTransaction", scheduledTransactionId);
           return Promise.resolve({
             data: { scheduled_transaction: materializeScheduled(plan, s), server_knowledge: plan.serverKnowledge },

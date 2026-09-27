@@ -130,6 +130,27 @@ describe("transfers", () => {
     expect(mirror!.transfer_transaction_id).toBe(original!.id);
   });
 
+  it("turns a plain transaction into a transfer on update, mirroring it on the target account", async () => {
+    const fake = new FakeYnab();
+    const checking = accountFixture({ name: "Checking" });
+    const savings = accountFixture({ name: "Savings" });
+    const planId = fake.addPlan({
+      accounts: [checking, savings],
+      transactions: [transactionFixture({ account_id: checking.id, date: "2024-01-05", amount: -5000 })],
+    });
+    const [seeded] = (await fake.api.transactions.getTransactionsByAccount(planId, checking.id)).data.transactions;
+
+    const savingsAccount = (await fake.api.accounts.getAccounts(planId)).data.accounts.find((a) => a.id === savings.id)!;
+    const updated = await fake.api.transactions.updateTransaction(planId, seeded.id, {
+      transaction: { payee_id: savingsAccount.transfer_payee_id },
+    });
+
+    expect(updated.data.transaction.transfer_account_id).toBe(savings.id);
+    const mirror = await fake.api.transactions.getTransactionById(planId, updated.data.transaction.transfer_transaction_id!);
+    expect(mirror.data.transaction.amount).toBe(5000);
+    expect(mirror.data.transaction.transfer_account_id).toBe(checking.id);
+  });
+
   it("deletes both sides of a transfer pair", async () => {
     const fake = new FakeYnab({ now: JAN_2024 });
     const { seed, accounts } = standardPlan();
@@ -165,6 +186,61 @@ describe("splits", () => {
     const splitRow = response.data.transactions.find((t) => t.type === "subtransaction")!;
     expect(splitRow.amount).toBe(-4000);
     expect(splitRow.category_name).toBe("Dining Out");
+  });
+
+  it("converts a plain transaction into a split on update", async () => {
+    const fake = new FakeYnab();
+    const account = accountFixture({ name: "Checking" });
+    const group = categoryGroupFixture({ name: "Everyday" });
+    const groceries = categoryFixture({ category_group_id: group.id, name: "Groceries" });
+    const dining = categoryFixture({ category_group_id: group.id, name: "Dining Out" });
+    const planId = fake.addPlan({
+      accounts: [account],
+      categoryGroups: [group],
+      categories: [groceries, dining],
+      transactions: [transactionFixture({ account_id: account.id, date: "2024-01-05", amount: -12000, category_id: groceries.id })],
+    });
+    const [seeded] = (await fake.api.transactions.getTransactionsByAccount(planId, account.id)).data.transactions;
+
+    const response = await fake.api.transactions.updateTransaction(planId, seeded.id, {
+      transaction: {
+        subtransactions: [
+          { amount: -8000, category_id: groceries.id },
+          { amount: -4000, category_id: dining.id },
+        ],
+      },
+    });
+
+    expect(response.data.transaction.category_id).toBeUndefined();
+    expect(response.data.transaction.subtransactions).toHaveLength(2);
+    expect(response.data.transaction.subtransactions.map((s) => s.amount)).toEqual([-8000, -4000]);
+  });
+
+  it("rejects changing the lines of an existing split with a YNAB-shaped 400", async () => {
+    const fake = new FakeYnab();
+    const account = accountFixture({ name: "Checking" });
+    const group = categoryGroupFixture({ name: "Everyday" });
+    const groceries = categoryFixture({ category_group_id: group.id, name: "Groceries" });
+    const planId = fake.addPlan({
+      accounts: [account],
+      categoryGroups: [group],
+      categories: [groceries],
+      transactions: [
+        transactionFixture({
+          account_id: account.id,
+          date: "2024-01-05",
+          amount: -12000,
+          subtransactions: [{ amount: -12000, category_id: groceries.id }],
+        }),
+      ],
+    });
+    const [seeded] = (await fake.api.transactions.getTransactionsByAccount(planId, account.id)).data.transactions;
+
+    await expect(
+      fake.api.transactions.updateTransaction(planId, seeded.id, {
+        transaction: { subtransactions: [{ amount: -12000, category_id: groceries.id }] },
+      })
+    ).rejects.toEqual(ynabError("400", "bad_request", "Updating subtransactions on an existing split transaction is not supported."));
   });
 });
 
@@ -206,6 +282,58 @@ describe("delta requests", () => {
 
     const full = await fake.api.accounts.getAccounts(planId, undefined);
     expect(full.data.accounts.map((a) => a.name).sort()).toEqual(["Checking", "Savings"]);
+  });
+});
+
+describe("plans", () => {
+  it("passes last_modified_on through to the plan summary", async () => {
+    const fake = new FakeYnab();
+    fake.addPlan({ name: "Family Plan", last_modified_on: "2024-05-01T12:00:00Z" });
+
+    const response = await fake.api.plans.getPlans();
+
+    expect(response.data.plans[0].last_modified_on).toBe("2024-05-01T12:00:00Z");
+  });
+});
+
+describe("scheduled transactions", () => {
+  it("replaces the whole scheduled transaction on update, clearing fields the caller omits", async () => {
+    const fake = new FakeYnab();
+    const account = accountFixture({ name: "Checking" });
+    const group = categoryGroupFixture({ name: "Bills" });
+    const rent = categoryFixture({ category_group_id: group.id, name: "Rent" });
+    const planId = fake.addPlan({
+      accounts: [account],
+      categoryGroups: [group],
+      categories: [rent],
+      scheduledTransactions: [
+        {
+          id: "sched-1",
+          date_first: "2099-01-01",
+          date_next: "2099-01-01",
+          frequency: "monthly",
+          amount: -150000,
+          memo: "Rent payment",
+          category_id: rent.id,
+          account_id: account.id,
+          deleted: false,
+          subtransactions: [],
+        },
+      ],
+    });
+
+    // Only date and amount are given; memo and category are not repeated.
+    await fake.api.scheduledTransactions.updateScheduledTransaction(planId, "sched-1", {
+      scheduled_transaction: { account_id: account.id, date: "2099-02-01", amount: -160000 },
+    });
+
+    const response = await fake.api.scheduledTransactions.getScheduledTransactionById(planId, "sched-1");
+    expect(response.data.scheduled_transaction.date_next).toBe("2099-02-01");
+    expect(response.data.scheduled_transaction.amount).toBe(-160000);
+    expect(response.data.scheduled_transaction.memo).toBeUndefined();
+    expect(response.data.scheduled_transaction.category_id).toBeUndefined();
+    // date_first is not part of SaveScheduledTransaction, so it survives the replace.
+    expect(response.data.scheduled_transaction.date_first).toBe("2099-01-01");
   });
 });
 
@@ -303,5 +431,16 @@ describe("id allocation", () => {
     for (const payee of seed.payees ?? []) expect(payees.map((p) => p.name)).toContain(payee.name);
     const transfers = (await fake.api.transactions.getTransactions(planId)).data.transactions.filter((t) => t.transfer_account_id);
     expect(transfers).toHaveLength(2);
+  });
+});
+
+describe("split payees", () => {
+  it("keeps the payee on a split transaction, as the real API does", async () => {
+    resetIds();
+    const fake = new FakeYnab();
+    const planId = fake.addPlan(standardPlan().seed);
+    const [split] = (await fake.api.transactions.getTransactions(planId, "2024-01-20", "2024-01-20")).data.transactions;
+    expect(split.subtransactions).toHaveLength(2);
+    expect(split.payee_name).toBe("Corner Grocer");
   });
 });
