@@ -9,7 +9,7 @@ import { listPlans } from "./plans/listPlans.js";
 import { listScheduledTransactions } from "./scheduled/listScheduledTransactions.js";
 import { approveTransaction } from "./transactions/approveTransaction.js";
 import { bulkApproveTransactions } from "./transactions/bulkApproveTransactions.js";
-import { createTransaction } from "./transactions/createTransaction.js";
+import { createTransactions } from "./transactions/createTransactions.js";
 import { deleteTransaction } from "./transactions/deleteTransaction.js";
 import { searchTransactions } from "./transactions/searchTransactions.js";
 import { importTransactions } from "./transactions/importTransactions.js";
@@ -20,7 +20,7 @@ import { updateTransaction } from "./transactions/updateTransaction.js";
 export const tools: Tool<any>[] = [
   listPlans,
   budgetSummary,
-  createTransaction,
+  createTransactions,
   approveTransaction,
   updateCategoryBudget,
   updateTransaction,
