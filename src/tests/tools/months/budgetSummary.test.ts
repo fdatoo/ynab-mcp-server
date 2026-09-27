@@ -127,4 +127,24 @@ describe("ynab_budget_summary", () => {
     expect(data.overspent).toEqual([]);
     expect(data.top_spending).toEqual([]);
   });
+
+  it("keeps ordinary categories in groups the API flags internal, as it does YNAB's default groups", async () => {
+    const account = accountFixture({ name: "Checking" });
+    const bills = categoryGroupFixture({ name: "Bills", internal: true });
+    const utilities = categoryFixture({ category_group_id: bills.id, name: "Utilities", internal: false });
+    const system = categoryGroupFixture({ name: "Internal Master Category", internal: true });
+    const rta = categoryFixture({ category_group_id: system.id, name: "Inflow: Ready to Assign", internal: true });
+    const h = setup(
+      planFixture({
+        accounts: [account],
+        categoryGroups: [bills, system],
+        categories: [utilities, rta],
+        transactions: [transactionFixture({ account_id: account.id, date: "2024-03-05", amount: -1000, category_id: utilities.id })],
+      })
+    );
+    const { data } = await h.call(budgetSummary, { month: "2024-03" });
+    const text = JSON.stringify(data);
+    expect(text).toContain("Utilities");
+    expect(text).not.toContain("Ready to Assign\"");
+  });
 });

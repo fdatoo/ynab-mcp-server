@@ -23,8 +23,9 @@ export const budgetSummary = defineTool({
       ctx.api.categories.getCategories(planId),
     ]);
     // A hidden group's categories are not necessarily flagged hidden themselves.
+    // Group-level internal is not a filter: the API sets it on YNAB's default groups too.
     const excludedGroups = new Set(
-      groups.data.category_groups.filter((group) => group.deleted || group.hidden || group.internal).map((group) => group.id)
+      groups.data.category_groups.filter((group) => group.deleted || group.hidden).map((group) => group.id)
     );
     const categories = data.month.categories.filter(
       (category) => !category.deleted && !category.hidden && !category.internal && !excludedGroups.has(category.category_group_id)

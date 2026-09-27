@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { listCategories } from "../../../tools/categories/listCategories.js";
-import { categoryFixture, categoryGroupFixture, planFixture, standardPlan, ynabError } from "../../fakes/ynab.js";
+import { accountFixture, categoryFixture, categoryGroupFixture, planFixture, standardPlan, transactionFixture, ynabError } from "../../fakes/ynab.js";
 import { setup } from "../harness.js";
 
 // standardPlan()'s categories are budgeted for the month the plan is created
@@ -114,5 +114,25 @@ describe("ynab_list_categories", () => {
     h.fake.failNext("categories.getCategories", ynabError("404.2", "resource_not_found", "Resource not found"));
     const result = await h.call(listCategories, {});
     expect(result).toMatchObject({ isError: true, text: "Resource not found (YNAB error 404.2)" });
+  });
+
+  it("keeps ordinary categories in groups the API flags internal, as it does YNAB's default groups", async () => {
+    const account = accountFixture({ name: "Checking" });
+    const bills = categoryGroupFixture({ name: "Bills", internal: true });
+    const utilities = categoryFixture({ category_group_id: bills.id, name: "Utilities", internal: false });
+    const system = categoryGroupFixture({ name: "Internal Master Category", internal: true });
+    const rta = categoryFixture({ category_group_id: system.id, name: "Inflow: Ready to Assign", internal: true });
+    const h = setup(
+      planFixture({
+        accounts: [account],
+        categoryGroups: [bills, system],
+        categories: [utilities, rta],
+        transactions: [transactionFixture({ account_id: account.id, date: "2024-03-05", amount: -1000, category_id: utilities.id })],
+      })
+    );
+    const { data } = await h.call(listCategories, { month: "2024-03" });
+    const text = JSON.stringify(data);
+    expect(text).toContain("Utilities");
+    expect(text).not.toContain("Ready to Assign\"");
   });
 });

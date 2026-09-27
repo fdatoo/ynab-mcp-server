@@ -28,12 +28,15 @@ export const listCategories = defineTool({
     const monthCategoriesById = new Map(monthResponse.data.month.categories.map((category) => [category.id, category]));
 
     const categoryGroups = categoriesResponse.data.category_groups
-      .filter((group) => !group.deleted && !group.internal && (input.includeHidden || !group.hidden))
+      // Only a category's own internal flag is meaningful: the API also marks
+      // YNAB's default groups (Bills, Needs, Wants...) internal.
+      .filter((group) => !group.deleted && (input.includeHidden || !group.hidden))
       .map((group) => {
         const monthCategories = group.categories
           .map((category) => monthCategoriesById.get(category.id) ?? category)
-          .filter((category) => !category.deleted && (input.includeHidden || !category.hidden));
+          .filter((category) => !category.deleted && !category.internal && (input.includeHidden || !category.hidden));
         return {
+          raw_count: group.categories.filter((category) => !category.deleted).length,
           id: group.id,
           name: group.name,
           ...(input.includeHidden ? { hidden: group.hidden } : {}),
@@ -42,7 +45,10 @@ export const listCategories = defineTool({
           activity_total: fromMilliunits(monthCategories.reduce((sum, c) => sum + c.activity, 0), currency),
           available_total: fromMilliunits(monthCategories.reduce((sum, c) => sum + c.balance, 0), currency),
         };
-      });
+      })
+      // Drop groups that only held internal or hidden categories, but keep a genuinely empty (new) group.
+      .filter((group) => group.categories.length > 0 || group.raw_count === 0)
+      .map(({ raw_count: _rawCount, ...group }) => group);
 
     const categoryCount = categoryGroups.reduce((sum, group) => sum + group.categories.length, 0);
     return {
