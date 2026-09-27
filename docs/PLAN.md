@@ -59,7 +59,7 @@ src/
 
 - Input type comes from `z.infer` on the schema; the hand-written interfaces go.
 - The handler receives `{ input, ctx }` where `ctx` holds the client, the resolved plan id, the cache and money helpers. No handler reads `process.env`.
-- The handler returns plain data. `defineTool` serializes it into `content` and `structuredContent`, and turns any thrown error into `isError: true` with a normalized message. This fixes the "errors look like successes" bug structurally.
+- The handler returns plain data. `defineTool` serializes it as compact JSON in `content` (no `structuredContent`, which would put every result in the model's context twice), and turns any thrown error into `isError: true` with a normalized message. This fixes the "errors look like successes" bug structurally.
 - Each tool declares MCP annotations: `readOnlyHint` for reads, `destructiveHint` for delete and bulk operations, `idempotentHint` where true. Clients use these to decide when to confirm.
 
 `index.ts` shrinks to building the context and looping over `registry.ts`.
@@ -130,7 +130,7 @@ Accounts
 Categories and assigning money
 - `ynab_list_categories`: optional month, `includeHidden`.
 - `ynab_get_category`: month detail including goal progress.
-- `ynab_create_category`, `ynab_update_category` (name, note, hidden, goal target)
+- `ynab_create_category`, `ynab_update_category` (name, note, group, goal target and date; the API cannot hide categories)
 - `ynab_create_category_group`, `ynab_update_category_group`
 - `ynab_assign`: set or adjust (`mode: "set" | "add"`) a category's assigned amount for a month.
 - `ynab_move_money`: from one category (or Ready to Assign) to another. Two PATCH calls; if the second fails the first is reverted and the response says so. Not atomic, and documented as such.
@@ -144,14 +144,14 @@ Transactions
 - `ynab_search_transactions`: replaces get, get-unapproved and filtered listing. Filters: since/until, account, category, payee, type (unapproved, uncategorized), memo or payee text, amount range, cleared status. Sort, limit, offset.
 - `ynab_get_transaction`: includes subtransactions.
 - `ynab_create_transactions`: batch; each item may be a split (subtransactions summing to the total, validated before sending) or a transfer (`transferToAccount` resolves the transfer payee id so the model never needs to know that trick).
-- `ynab_update_transactions`: batch partial updates, including converting to or editing splits.
+- `ynab_update_transactions`: batch partial updates, including converting a transaction into a split. The API rejects edits to an existing split's lines, so the tool says so instead of attempting it.
 - `ynab_approve_transactions`: ids, or a filter such as "all unapproved in account X"; `dryRun` returns what would change.
 - `ynab_delete_transaction`: destructive annotation.
 - `ynab_import_transactions` (existing)
 - `ynab_reconcile_account`: given a statement balance and date, compares against cleared balance; on match marks cleared transactions reconciled; on mismatch reports the difference and, only with `createAdjustment: true`, adds an adjustment transaction. `dryRun` supported.
 
 Scheduled transactions
-- `ynab_list_scheduled_transactions` (existing), `ynab_create_scheduled_transaction`, `ynab_update_scheduled_transaction`, `ynab_delete_scheduled_transaction`
+- `ynab_list_scheduled_transactions` (existing), `ynab_create_scheduled_transaction`, `ynab_update_scheduled_transaction`, `ynab_delete_scheduled_transaction`. The API has no scheduled splits.
 
 Months and reports
 - `ynab_budget_summary`: rewritten (phase 2).
@@ -163,6 +163,9 @@ Months and reports
 Set the MCP server `instructions` field (and repeat in relevant tool descriptions) with the operations the YNAB API does not support, so the agent tells you rather than opening a browser:
 
 - deleting or merging categories, category groups, payees or accounts
+- hiding or unhiding categories
+- editing the lines of an existing split (converting a plain transaction into a split works)
+- scheduled split transactions
 - closing or reopening accounts, linking bank connections, fixing broken connections
 - matching an imported transaction to a manual one by hand
 - undo

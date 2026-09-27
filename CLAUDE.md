@@ -21,75 +21,53 @@ ALWAYS use conventional commits format (Refer to https://www.conventionalcommits
 
 ## Architecture Overview
 
-This is a **Model Context Protocol (MCP) server** that provides AI tools for interacting with YNAB (You Need A Budget) budgets. Built with `@modelcontextprotocol/sdk`.
+This is a **Model Context Protocol (MCP) server** that provides AI tools for interacting with YNAB (You Need A Budget) plans. Built with `@modelcontextprotocol/sdk`. The YNAB API calls budgets "plans"; the code follows the API.
 
 ### Core Structure
-- **Entry Point**: `src/index.ts` - Server setup and tool registration
-- **Tools**: `src/tools/*.ts` - Each tool is a separate module exporting `name`, `description`, `inputSchema`, and `execute` function
-- **Tests**: `src/tests/*.test.ts` - Vitest tests for each tool
+- `src/index.ts`: entry point. Loads config, builds the client and context, starts stdio.
+- `src/config.ts`: env parsing. Fails at startup without a token.
+- `src/server.ts`: `createServer(ctx)` registers every tool in `src/tools/registry.ts`.
+- `src/context.ts`: builds the `ToolContext` handed to every tool (API client, plan id resolution, currency, lookup cache).
+- `src/ynab/`: `client.ts` (fetch wrapper: rate-limit tracking, one retry for failed GETs), `errors.ts` (normalizes everything the SDK throws), `money.ts` (milliunit conversion and formatting per plan currency), `lookup.ts` (cached accounts, categories and payees; name-to-id resolution).
+- `src/tools/<domain>/*.ts`: one tool per file, each a `defineTool({...})` export.
+- `src/tests/`: `core/` for the modules above, `tools/` per tool, `fakes/ynab.ts` for the in-memory YNAB fake.
 
-### Tool Module Pattern
-Each tool in `src/tools/` exports:
-- `name`: Tool identifier (snake_case)
-- `description`: Tool description
-- `inputSchema`: Zod schema object for input validation
-- `execute(input, api)`: Async handler receiving input and YNAB API client
-
-Tools are registered in `src/index.ts` which passes the shared YNAB `api` instance to each handler.
+### Tool contract
+`defineTool` (in `src/tools/defineTool.ts`) takes `name`, `title`, `description`, a zod `inputSchema` shape, MCP `annotations`, and `handler(input, ctx)`. The handler returns plain data and throws on failure; `runTool` serializes the data and turns any throw into an `isError` result with a readable message. Input types come from the schema, so there are no hand-written input interfaces. Handlers never read `process.env`; they use `ctx.planId(input.planId)`.
 
 ### Environment Variables
-- `YNAB_API_TOKEN` (required) - Personal Access Token from YNAB API
-- `YNAB_BUDGET_ID` (optional) - Default budget ID
+- `YNAB_API_TOKEN` (required): Personal Access Token from YNAB.
+- `YNAB_PLAN_ID` (optional): default plan. `YNAB_BUDGET_ID` is still accepted. Without either, the API's "last-used" plan is used.
 
 ## Adding New Tools
 
-1. Create `src/tools/MyTool.ts`:
+1. Create `src/tools/<domain>/myTool.ts`:
 ```typescript
 import { z } from "zod";
-import * as ynab from "ynab";
+import { defineTool } from "../defineTool.js";
+import { planIdParam } from "../common.js";
 
-export const name = "my_tool";
-export const description = "What this tool does";
-export const inputSchema = {
-  budgetId: z.string().optional().describe("Budget ID (optional, uses YNAB_BUDGET_ID env var if not provided)"),
-  requiredParam: z.string().describe("Description of required param"),
-};
-
-interface MyToolInput {
-  budgetId?: string;
-  requiredParam: string;
-}
-
-export async function execute(input: MyToolInput, api: ynab.API) {
-  try {
-    const budgetId = input.budgetId || process.env.YNAB_BUDGET_ID;
-    if (!budgetId) throw new Error("No budget ID provided");
-
-    const result = await api.someMethod(budgetId, input.requiredParam);
-
-    return {
-      content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }]
-    };
-  } catch (error) {
-    return {
-      content: [{ type: "text" as const, text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}` }]
-    };
-  }
-}
-```
-
-2. Register in `src/index.ts`:
-```typescript
-import * as MyTool from "./tools/MyTool.js";
-
-server.registerTool(MyTool.name, {
+export const myTool = defineTool({
+  name: "ynab_my_tool",
   title: "My Tool",
-  description: MyTool.description,
-  inputSchema: MyTool.inputSchema,
-}, async (input) => MyTool.execute(input, api));
+  description: "What this tool does",
+  inputSchema: {
+    planId: planIdParam,
+    requiredParam: z.string().describe("Description of required param"),
+  },
+  annotations: { readOnlyHint: true, openWorldHint: true },
+  async handler(input, ctx) {
+    const response = await ctx.api.someApi.someMethod(ctx.planId(input.planId), input.requiredParam);
+    return { result: response.data };
+  },
+});
 ```
 
-3. Add test in `src/tests/MyTool.test.ts`
+2. Add it to the array in `src/tools/registry.ts`.
+
+3. Add `src/tests/tools/<domain>/myTool.test.ts` using `setup()` from `src/tests/tools/harness.ts`, which runs the tool against the in-memory fake the way the server does. The fake returns transactions oldest first and treats positive amounts as inflows, as the real API does. Extend the fake if the tool needs an endpoint it lacks.
+
+4. `scripts/smoke.mjs` runs the built server against the real API (read-only tools only, unless pointed at a sandbox plan).
 
 ## YNAB API Reference
 - YNAB SDK types: `node_modules/ynab/dist/index.d.ts`
