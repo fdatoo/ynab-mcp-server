@@ -1,6 +1,6 @@
 # Overhaul plan
 
-Status: proposed, 2026-09-27.
+Status: implemented on branch `overhaul`, 2026-09-27. Deviations from the plan are noted inline.
 
 This plan covers the audit findings in three phases: restructure and clean up, fix the known bugs, then cover the rest of the YNAB API. Each phase leaves `main` working and shippable. Phase 1 changes no user-visible behaviour beyond tool naming; phase 2 changes behaviour only where it was wrong.
 
@@ -81,7 +81,7 @@ Accounts, categories and payees change rarely and are needed constantly for name
 - Add `npm run typecheck` (`tsc --noEmit`) and run it before tests.
 - Fix or remove the coverage upload (it is gated on Node 20, which is not in the matrix, so it never runs).
 - Single source for the version: read it from `package.json` at startup instead of hard-coding `0.1.2` in `index.ts`.
-- Delete stale remote branches after checking nothing on them is wanted (`add-knowledge-store`, `http-streaming-server`, `claude/add-http-server-hosting-*`, `claude/transaction-approval-ui-*`, `yarn-upgrade`, `update-readme`, `minor-version-bump`, `prefix-tool-names`).
+- Delete stale remote branches after checking nothing on them is wanted (`add-knowledge-store`, `http-streaming-server`, `claude/add-http-server-hosting-*`, `claude/transaction-approval-ui-*`, `yarn-upgrade`, `update-readme`, `minor-version-bump`, `prefix-tool-names`). Not done: `origin` is the upstream author's repository, this account has no push access, and four of those branches hold unmerged work.
 
 ### 1.7 Tests
 
@@ -180,7 +180,7 @@ Verify this list against the spec at implementation time; the API has been addin
 
 ## Sequencing
 
-Suggested commit series, each green on its own:
+Suggested commit series, each green on its own. In practice phases 2 and 3 landed together in fewer commits: the bug fixes live in the tools that replaced the buggy ones, and parallel work on shared files (the fake, the registry) could not be split per row without leaving commits that do not compile.
 
 1. Remove unused deps; add typecheck to CI; fix CI triggers and coverage gate.
 2. Untrack `dist/`.
