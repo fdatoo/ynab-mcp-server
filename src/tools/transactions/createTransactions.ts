@@ -120,11 +120,33 @@ async function findDuplicates(ctx: ToolContext, planId: string, prepared: Prepar
   return duplicates;
 }
 
+/**
+ * The API returns a batch in its own order (by id, in practice), so each
+ * created transaction is matched back to the request item it came from.
+ */
+function inRequestOrder(requested: Prepared[], created: ynab.TransactionDetail[]) {
+  const unmatched = [...created];
+  const ordered: Array<{ index: number; txn: ynab.TransactionDetail }> = [];
+  for (const item of requested) {
+    const at = unmatched.findIndex(
+      (txn) =>
+        txn.account_id === item.body.account_id &&
+        txn.date === item.body.date &&
+        txn.amount === item.body.amount &&
+        (txn.subtransactions?.length ?? 0) === (item.body.subtransactions?.length ?? 0)
+    );
+    if (at >= 0) ordered.push({ index: item.index, txn: unmatched.splice(at, 1)[0] });
+  }
+  // Anything the match missed is still reported rather than dropped.
+  for (const txn of unmatched) ordered.push({ index: -1, txn });
+  return ordered;
+}
+
 export const createTransactions = defineTool({
   name: "ynab_create_transactions",
   title: "Create Transactions",
   description:
-    "Creates one or more transactions. Every amount is positive with a required direction: 'outflow' for spending, 'inflow' for income or refunds. " +
+    "Creates one or more transactions; each result carries the index of the request item it came from. Every amount is positive with a required direction: 'outflow' for spending, 'inflow' for income or refunds. " +
     "Accounts, categories and payees can be given by name. Supports splits across categories and transfers between accounts. " +
     "If a transaction with the same account, date and amount already exists it is not created again and is returned under skipped_duplicates; " +
     "set allowDuplicate only when the user confirms it is a separate transaction.",
@@ -144,17 +166,17 @@ export const createTransactions = defineTool({
     const duplicates = input.allowDuplicate ? new Map<number, ynab.TransactionDetail>() : await findDuplicates(ctx, planId, prepared);
     const toCreate = prepared.filter((p) => !duplicates.has(p.index));
 
-    let created: ynab.TransactionDetail[] = [];
+    let created: Array<{ index: number; txn: ynab.TransactionDetail }> = [];
     if (toCreate.length > 0) {
       const { data } = await ctx.api.transactions.createTransaction(planId, { transactions: toCreate.map((p) => p.body) });
-      created = data.transactions ?? [];
+      created = inRequestOrder(toCreate, data.transactions ?? []);
       ctx.lookup.invalidate(planId, ["accounts", "payees"]);
     }
 
     const newPayees = [...new Set(toCreate.flatMap((p) => p.newPayees))];
     return {
       currency: currency.iso_code,
-      created: created.map((txn) => formatTransaction(txn, currency)),
+      created: created.map(({ index, txn }) => ({ index, ...formatTransaction(txn, currency) })),
       ...(duplicates.size > 0
         ? {
             skipped_duplicates: [...duplicates].map(([index, existing]) => ({

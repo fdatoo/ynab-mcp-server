@@ -1215,7 +1215,8 @@ export class FakeYnab {
         data: {
           transaction_ids: created.map((t) => t.id),
           transaction: data.transaction ? created[0] : undefined,
-          transactions: data.transactions ? created : undefined,
+          // The real API does not return a batch in request order (observed: sorted by id).
+          transactions: data.transactions ? [...created].sort((a, b) => b.id.localeCompare(a.id)) : undefined,
           duplicate_import_ids: duplicates,
           server_knowledge: plan.serverKnowledge,
         },

@@ -163,4 +163,21 @@ describe("ynab_create_transactions", () => {
     expect(result).toMatchObject({ isError: true });
     expect(result.text).toMatch(/No category matches "Nope"/);
   });
+
+  it("returns created transactions in request order with their index, although the API reorders them", async () => {
+    const h = setup();
+    const { data } = await h.call(createTransactions, {
+      transactions: [
+        { ...base, amount: 30, direction: "outflow", splits: [{ amount: 20, category: "Groceries" }, { amount: 10, category: "Dining Out" }] },
+        { ...base, amount: 40, direction: "outflow", transferToAccount: "Credit Card" },
+        { ...base, amount: 5, direction: "inflow" },
+      ],
+    });
+    expect(data.created.map((t: { index: number; amount: number }) => [t.index, t.amount])).toEqual([
+      [0, -30],
+      [1, -40],
+      [2, 5],
+    ]);
+    expect(data.created[0].category).toBe("Split");
+  });
 });
