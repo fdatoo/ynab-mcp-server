@@ -1,7 +1,7 @@
 {
   "name": "ynab-mcp-server",
   "version": "0.2.0",
-  "description": "ynab-mcp-server MCP server",
+  "description": "MCP server for managing a YNAB plan: transactions, categories, reconciliation and reports",
   "author": "Caleb LeNoir <caleb.lenoir@hey.com>",
   "type": "module",
   "bin": {
@@ -35,5 +35,13 @@
   },
   "engines": {
     "node": ">=20"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fdatoo/ynab-mcp-server.git"
+  },
+  "homepage": "https://github.com/fdatoo/ynab-mcp-server#readme",
+  "contributors": [
+    "Fynn Datoo"
+  ]
 }

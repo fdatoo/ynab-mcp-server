@@ -1,19 +1,24 @@
-[![MseeP.ai Security Assessment Badge](https://mseep.net/mseep-audited.png)](https://mseep.ai/app/calebl-ynab-mcp-server)
-
 # ynab-mcp-server
-[![smithery badge](https://smithery.ai/badge/@calebl/ynab-mcp-server)](https://smithery.ai/server/@calebl/ynab-mcp-server)
 
 An MCP server that lets an AI assistant read and manage your [YNAB](https://ynab.com) plan: log and categorize spending, approve imports, assign and move money, reconcile accounts, manage categories and recurring transactions, and report on where the money went.
 
-<a href="https://glama.ai/mcp/servers/@calebl/ynab-mcp-server">
-  <img width="380" height="200" src="https://glama.ai/mcp/servers/@calebl/ynab-mcp-server/badge" alt="YNAB Server MCP server" />
-</a>
+This is a fork of [calebl/ynab-mcp-server](https://github.com/calebl/ynab-mcp-server), reworked so an assistant can do nearly everything the YNAB API allows without falling back to the YNAB website. Compared with upstream:
+
+- It covers about twice as much of the API: splits, transfers, batch create and update, reconciliation, recurring transactions, category and group management, moving money, and a spending report.
+- Amounts are in your plan's currency, and every write states its direction, so a purchase cannot be recorded as income by a sign mistake.
+- Accounts, categories and payees can be named instead of looked up by id.
+- Errors reach the assistant as errors, repeated create requests don't duplicate transactions, and the assistant is told which things only the YNAB app can do.
+- Tests run against an in-memory fake of the YNAB API, and a script exercises every write tool against a real sandbox plan.
+
+Tool names differ from upstream (see [CHANGELOG.md](CHANGELOG.md)), so the two are not drop-in replacements for each other.
 
 ## Setup
 
 1. Create a Personal Access Token at https://app.ynab.com/settings/developer. It does not expire, so you set it once. The token stays in the server's environment and is never sent to the model.
-2. Build the server:
+2. Clone and build:
    ```bash
+   git clone https://github.com/fdatoo/ynab-mcp-server.git
+   cd ynab-mcp-server
    npm install   # also builds, via the prepare script
    ```
    Build output is not committed, so run `npm run build` again after pulling changes.
@@ -104,8 +109,12 @@ npm run debug        # MCP inspector
 - `node scripts/smoke.mjs [tool '{"json":"args"}' ...]` calls tools with your `YNAB_API_TOKEN`. Use read-only tools unless pointed at a test plan.
 - `YNAB_SANDBOX_PLAN_ID=... node scripts/sandbox-check.mjs` runs every write tool against a plan whose name contains "Sandbox" and cleans up after itself. Categories, groups and payees it creates are reused across runs, since the API cannot delete them.
 
-## Installing via Smithery
+## Upstream
+
+To pull in changes from the original project:
 
 ```bash
-npx -y @smithery/cli install @calebl/ynab-mcp-server --client claude
+git remote add upstream https://github.com/calebl/ynab-mcp-server.git   # once
+git fetch upstream
+git merge upstream/main
 ```
