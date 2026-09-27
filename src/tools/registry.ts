@@ -11,8 +11,7 @@ import { approveTransaction } from "./transactions/approveTransaction.js";
 import { bulkApproveTransactions } from "./transactions/bulkApproveTransactions.js";
 import { createTransaction } from "./transactions/createTransaction.js";
 import { deleteTransaction } from "./transactions/deleteTransaction.js";
-import { getTransactions } from "./transactions/getTransactions.js";
-import { getUnapprovedTransactions } from "./transactions/getUnapprovedTransactions.js";
+import { searchTransactions } from "./transactions/searchTransactions.js";
 import { importTransactions } from "./transactions/importTransactions.js";
 import { updateTransaction } from "./transactions/updateTransaction.js";
 
@@ -20,7 +19,6 @@ import { updateTransaction } from "./transactions/updateTransaction.js";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const tools: Tool<any>[] = [
   listPlans,
-  getUnapprovedTransactions,
   budgetSummary,
   createTransaction,
   approveTransaction,
@@ -28,7 +26,7 @@ export const tools: Tool<any>[] = [
   updateTransaction,
   bulkApproveTransactions,
   listPayees,
-  getTransactions,
+  searchTransactions,
   deleteTransaction,
   listCategories,
   listAccounts,

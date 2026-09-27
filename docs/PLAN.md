@@ -104,7 +104,7 @@ Each fix lands with a test that fails before it.
 | Errors returned as normal content | Handled by `defineTool` (1.3) |
 | Unapproved-transactions description promises delta sync it doesn't do | Tool folded into search (see catalogue); descriptions audited against behaviour |
 | Budget summary filters categories then returns the unfiltered month, in milliunits, without the promised analysis | Rewrite: Ready to Assign, overspent categories, underfunded goals, top activity, all in currency units, hidden and deleted categories excluded |
-| No `import_id` on create, so retries duplicate | Generate a deterministic `import_id` from account, date, amount and payee unless the caller supplies one; surface `duplicate_import_ids` from the response |
+| No retry protection on create, so a repeated call duplicates | Before creating, look for a live transaction in the same account with the same date and amount; if one exists, return it instead unless `allowDuplicate: true`. Setting `import_id` was the first idea, but YNAB treats such transactions as imported and will not match them to the bank's later import, which would cause the very duplicates it was meant to prevent |
 | Approve fetches the transaction before updating | Single `updateTransactions` call |
 | Create can't set `reconciled`; `flagColor` unvalidated | Shared enums for cleared status and flag colour across all tools |
 | Update can't clear memo, category or flag | Accept explicit `null` to clear |
@@ -143,7 +143,7 @@ Payees
 Transactions
 - `ynab_search_transactions`: replaces get, get-unapproved and filtered listing. Filters: since/until, account, category, payee, type (unapproved, uncategorized), memo or payee text, amount range, cleared status. Sort, limit, offset.
 - `ynab_get_transaction`: includes subtransactions.
-- `ynab_create_transactions`: batch; each item may be a split (subtransactions summing to the total, validated before sending) or a transfer (`transferToAccount` resolves the transfer payee id so the model never needs to know that trick).
+- `ynab_create_transactions`: batch, with the duplicate guard from phase 2; each item may be a split (subtransactions summing to the total, validated before sending) or a transfer (`transferToAccount` resolves the transfer payee id so the model never needs to know that trick).
 - `ynab_update_transactions`: batch partial updates, including converting a transaction into a split. The API rejects edits to an existing split's lines, so the tool says so instead of attempting it.
 - `ynab_approve_transactions`: ids, or a filter such as "all unapproved in account X"; `dryRun` returns what would change.
 - `ynab_delete_transaction`: destructive annotation.
