@@ -25,7 +25,7 @@ export async function execute(input: ListMonthsInput, api: ynab.API) {
     const budgetId = getBudgetId(input.budgetId);
 
     console.error(`Listing months for budget ${budgetId}`);
-    const response = await api.months.getBudgetMonths(budgetId);
+    const response = await api.months.getPlanMonths(budgetId);
 
     // Format the months
     const months = response.data.months.map((month) => ({

@@ -71,6 +71,7 @@ export async function execute(input: GetTransactionsInput, api: ynab.API) {
         budgetId,
         input.accountId,
         input.sinceDate,
+        undefined, // untilDate
         mapTransactionType(input.type) as ynab.GetTransactionsByAccountTypeEnum
       );
       rawTransactions = response.data.transactions;
@@ -79,6 +80,7 @@ export async function execute(input: GetTransactionsInput, api: ynab.API) {
         budgetId,
         input.categoryId,
         input.sinceDate,
+        undefined, // untilDate
         mapTransactionType(input.type) as ynab.GetTransactionsByCategoryTypeEnum
       );
       rawTransactions = response.data.transactions;
@@ -87,6 +89,7 @@ export async function execute(input: GetTransactionsInput, api: ynab.API) {
         budgetId,
         input.payeeId,
         input.sinceDate,
+        undefined, // untilDate
         mapTransactionType(input.type) as ynab.GetTransactionsByPayeeTypeEnum
       );
       rawTransactions = response.data.transactions;
@@ -94,6 +97,7 @@ export async function execute(input: GetTransactionsInput, api: ynab.API) {
       const response = await api.transactions.getTransactions(
         budgetId,
         input.sinceDate,
+        undefined, // untilDate
         mapTransactionType(input.type)
       );
       rawTransactions = response.data.transactions;

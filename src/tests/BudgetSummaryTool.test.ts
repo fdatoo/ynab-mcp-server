@@ -10,7 +10,7 @@ describe('BudgetSummaryTool', () => {
       getAccounts: Mock;
     };
     months: {
-      getBudgetMonth: Mock;
+      getPlanMonth: Mock;
     };
   };
 
@@ -22,7 +22,7 @@ describe('BudgetSummaryTool', () => {
         getAccounts: vi.fn(),
       },
       months: {
-        getBudgetMonth: vi.fn(),
+        getPlanMonth: vi.fn(),
       },
     };
 
@@ -122,14 +122,14 @@ describe('BudgetSummaryTool', () => {
       mockApi.accounts.getAccounts.mockResolvedValue({
         data: { accounts: mockAccountsData },
       });
-      mockApi.months.getBudgetMonth.mockResolvedValue({
+      mockApi.months.getPlanMonth.mockResolvedValue({
         data: mockMonthData,
       });
 
       const result = await BudgetSummaryTool.execute({}, mockApi as any);
 
       expect(mockApi.accounts.getAccounts).toHaveBeenCalledWith('test-budget-id');
-      expect(mockApi.months.getBudgetMonth).toHaveBeenCalledWith('test-budget-id', 'current');
+      expect(mockApi.months.getPlanMonth).toHaveBeenCalledWith('test-budget-id', 'current');
 
       const parsedResult = JSON.parse(result.content[0].text);
       expect(parsedResult).toHaveProperty('monthBudget');
@@ -146,7 +146,7 @@ describe('BudgetSummaryTool', () => {
       mockApi.accounts.getAccounts.mockResolvedValue({
         data: { accounts: mockAccountsData },
       });
-      mockApi.months.getBudgetMonth.mockResolvedValue({
+      mockApi.months.getPlanMonth.mockResolvedValue({
         data: mockMonthData,
       });
 
@@ -155,14 +155,14 @@ describe('BudgetSummaryTool', () => {
         mockApi as any
       );
 
-      expect(mockApi.months.getBudgetMonth).toHaveBeenCalledWith('test-budget-id', '2023-01-01');
+      expect(mockApi.months.getPlanMonth).toHaveBeenCalledWith('test-budget-id', '2023-01-01');
     });
 
     it('should successfully get budget summary with custom budget ID', async () => {
       mockApi.accounts.getAccounts.mockResolvedValue({
         data: { accounts: mockAccountsData },
       });
-      mockApi.months.getBudgetMonth.mockResolvedValue({
+      mockApi.months.getPlanMonth.mockResolvedValue({
         data: mockMonthData,
       });
 
@@ -172,14 +172,14 @@ describe('BudgetSummaryTool', () => {
       );
 
       expect(mockApi.accounts.getAccounts).toHaveBeenCalledWith('custom-budget-id');
-      expect(mockApi.months.getBudgetMonth).toHaveBeenCalledWith('custom-budget-id', 'current');
+      expect(mockApi.months.getPlanMonth).toHaveBeenCalledWith('custom-budget-id', 'current');
     });
 
     it('should handle empty accounts and categories', async () => {
       mockApi.accounts.getAccounts.mockResolvedValue({
         data: { accounts: [] },
       });
-      mockApi.months.getBudgetMonth.mockResolvedValue({
+      mockApi.months.getPlanMonth.mockResolvedValue({
         data: {
           month: {
             ...mockMonthData.month,
@@ -218,7 +218,7 @@ describe('BudgetSummaryTool', () => {
       mockApi.accounts.getAccounts.mockResolvedValue({
         data: { accounts: accountsWithDeletedAndClosed },
       });
-      mockApi.months.getBudgetMonth.mockResolvedValue({
+      mockApi.months.getPlanMonth.mockResolvedValue({
         data: mockMonthData,
       });
 
@@ -244,7 +244,7 @@ describe('BudgetSummaryTool', () => {
         data: { accounts: mockAccountsData },
       });
       const apiError = new Error('Month API Error');
-      mockApi.months.getBudgetMonth.mockRejectedValue(apiError);
+      mockApi.months.getPlanMonth.mockRejectedValue(apiError);
 
       const result = await BudgetSummaryTool.execute({}, mockApi as any);
 

@@ -91,6 +91,7 @@ describe('GetTransactionsTool', () => {
       expect(mockApi.transactions.getTransactions).toHaveBeenCalledWith(
         'test-budget-id',
         undefined,
+        undefined, // untilDate
         undefined
       );
 
@@ -131,6 +132,7 @@ describe('GetTransactionsTool', () => {
         'test-budget-id',
         'account-1',
         undefined,
+        undefined, // untilDate
         undefined
       );
     });
@@ -152,6 +154,7 @@ describe('GetTransactionsTool', () => {
         'test-budget-id',
         'category-1',
         undefined,
+        undefined, // untilDate
         undefined
       );
     });
@@ -173,6 +176,7 @@ describe('GetTransactionsTool', () => {
         'test-budget-id',
         'payee-1',
         undefined,
+        undefined, // untilDate
         undefined
       );
     });
@@ -193,6 +197,7 @@ describe('GetTransactionsTool', () => {
       expect(mockApi.transactions.getTransactions).toHaveBeenCalledWith(
         'test-budget-id',
         '2024-01-01',
+        undefined, // untilDate
         undefined
       );
     });
@@ -213,6 +218,7 @@ describe('GetTransactionsTool', () => {
       expect(mockApi.transactions.getTransactions).toHaveBeenCalledWith(
         'test-budget-id',
         undefined,
+        undefined, // untilDate
         ynab.GetTransactionsTypeEnum.Unapproved
       );
     });
@@ -233,6 +239,7 @@ describe('GetTransactionsTool', () => {
       expect(mockApi.transactions.getTransactions).toHaveBeenCalledWith(
         'test-budget-id',
         undefined,
+        undefined, // untilDate
         ynab.GetTransactionsTypeEnum.Uncategorized
       );
     });

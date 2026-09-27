@@ -33,7 +33,7 @@ export async function execute(input: BudgetSummaryInput, api: ynab.API) {
       (account) => account.deleted === false && account.closed === false
     );
 
-    const monthBudget = await api.months.getBudgetMonth(budgetId, month);
+    const monthBudget = await api.months.getPlanMonth(budgetId, month);
 
     const categories = monthBudget.data.month.categories
       .filter(
