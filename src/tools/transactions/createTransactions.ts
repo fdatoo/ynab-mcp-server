@@ -14,15 +14,8 @@ import {
   signedMilliunits,
 } from "../common.js";
 import { formatTransaction } from "../format.js";
+import { payeeFields, splitLine } from "./shared.js";
 import { toMilliunits, type Currency } from "../../ynab/money.js";
-
-const splitLine = z.object({
-  amount: amountParam,
-  direction: directionParam.optional().describe("Defaults to the transaction's direction"),
-  category: categoryRef.optional(),
-  payee: payeeRef.optional().describe("Payee for this line, if different"),
-  memo: z.string().max(500).optional(),
-});
 
 const newTransaction = z.object({
   account: accountRef,
@@ -51,18 +44,6 @@ interface Prepared {
   index: number;
   body: ynab.NewTransaction;
   newPayees: string[];
-}
-
-/** Resolves a payee reference: an existing payee's id, or a name the API will create. */
-async function payeeFields(ctx: ToolContext, planId: string, ref: string, newPayees: string[]) {
-  try {
-    const payee = await ctx.lookup.resolvePayee(planId, ref);
-    return { payee_id: payee.id };
-  } catch (error) {
-    if (!(error instanceof Error) || !error.message.startsWith("No payee matches")) throw error;
-    newPayees.push(ref);
-    return { payee_name: ref };
-  }
 }
 
 async function prepare(ctx: ToolContext, planId: string, currency: Currency, input: NewTransactionInput, index: number): Promise<Prepared> {

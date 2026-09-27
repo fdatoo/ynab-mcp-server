@@ -1,18 +1,23 @@
 import { z } from "zod";
 import { defineTool } from "../defineTool.js";
 import { planIdParam } from "../common.js";
+import { fromMilliunits } from "../../ynab/money.js";
 
 export const listAccounts = defineTool({
   name: "ynab_list_accounts",
   title: "List Accounts",
-  description: "Lists all accounts in a plan. Useful for finding account IDs when creating transactions.",
+  description:
+    "Lists accounts in a plan, with balances in the plan's currency. " +
+    "direct_import_in_error flags an account whose bank connection is broken and needs fixing in the YNAB app.",
   inputSchema: {
     planId: planIdParam,
     includeClosedAccounts: z.boolean().optional().describe("Include closed accounts in the list (default: false)"),
   },
   annotations: { readOnlyHint: true, openWorldHint: true },
   async handler(input, ctx) {
-    const response = await ctx.api.accounts.getAccounts(ctx.planId(input.planId));
+    const planId = ctx.planId(input.planId);
+    const currency = await ctx.currency(planId);
+    const response = await ctx.api.accounts.getAccounts(planId);
     const accounts = response.data.accounts
       .filter((account) => !account.deleted && (input.includeClosedAccounts || !account.closed))
       .map((account) => ({
@@ -21,11 +26,14 @@ export const listAccounts = defineTool({
         type: account.type,
         on_budget: account.on_budget,
         closed: account.closed,
-        balance: (account.balance / 1000).toFixed(2),
-        cleared_balance: (account.cleared_balance / 1000).toFixed(2),
-        uncleared_balance: (account.uncleared_balance / 1000).toFixed(2),
-        transfer_payee_id: account.transfer_payee_id,
+        balance: fromMilliunits(account.balance, currency),
+        cleared_balance: fromMilliunits(account.cleared_balance, currency),
+        uncleared_balance: fromMilliunits(account.uncleared_balance, currency),
+        note: account.note ?? null,
+        last_reconciled_at: account.last_reconciled_at ?? null,
+        direct_import_linked: account.direct_import_linked ?? false,
+        direct_import_in_error: account.direct_import_in_error ?? false,
       }));
-    return { accounts, account_count: accounts.length };
+    return { currency: currency.iso_code, accounts, account_count: accounts.length };
   },
 });

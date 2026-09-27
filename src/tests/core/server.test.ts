@@ -23,4 +23,14 @@ describe("createServer", () => {
     }
     await client.close();
   });
+
+  it("tells the client what the API cannot do", async () => {
+    const server = createServer({ api: {} as ynab.API, planId: () => "p", rateLimit: () => undefined, currency: async () => USD, lookup: new Lookup({} as ynab.API) });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const client = new Client({ name: "test", version: "0" });
+    await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+    expect(client.getInstructions()).toMatch(/cannot do the following/);
+    expect(client.getInstructions()).toMatch(/Outputs are signed/);
+    await client.close();
+  });
 });

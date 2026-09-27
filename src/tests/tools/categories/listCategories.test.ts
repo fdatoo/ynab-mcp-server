@@ -3,13 +3,13 @@ import { listCategories } from "../../../tools/categories/listCategories.js";
 import { categoryFixture, categoryGroupFixture, planFixture, standardPlan, ynabError } from "../../fakes/ynab.js";
 import { setup } from "../harness.js";
 
-// Category balances are computed for the "current" month, so pin the clock to
-// line up with standardPlan()'s January/February transactions.
+// standardPlan()'s categories are budgeted for the month the plan is created
+// in, and its transactions run January to February 2024.
 const JAN_2024 = new Date("2024-01-15T00:00:00Z");
 
 describe("ynab_list_categories", () => {
   beforeEach(() => {
-    vi.useFakeTimers();
+    vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(JAN_2024);
   });
 
@@ -17,7 +17,7 @@ describe("ynab_list_categories", () => {
     vi.useRealTimers();
   });
 
-  it("groups categories, excluding hidden and deleted categories within a visible group", async () => {
+  it("groups categories by category group, excluding hidden and deleted categories", async () => {
     const h = setup(standardPlan().seed);
     const { data } = await h.call(listCategories, {});
 
@@ -41,40 +41,72 @@ describe("ynab_list_categories", () => {
     expect(data.group_count).toBe(1);
   });
 
-  it("formats budgeted, activity and balance in dollars", async () => {
+  it("includes hidden categories and groups, and their hidden field, only when asked", async () => {
+    const h = setup(standardPlan().seed);
+
+    const { data } = await h.call(listCategories, { includeHidden: true });
+
+    const everyday = data.category_groups.find((g: { name: string }) => g.name === "Everyday Expenses");
+    expect(everyday.categories.map((c: { name: string }) => c.name)).toContain("Old Hobby");
+    const oldHobby = everyday.categories.find((c: { name: string }) => c.name === "Old Hobby");
+    expect(oldHobby.hidden).toBe(true);
+    const groceries = everyday.categories.find((c: { name: string }) => c.name === "Groceries");
+    expect(groceries.hidden).toBe(false);
+  });
+
+  it("reports assigned, activity and available in the plan currency", async () => {
     const h = setup(standardPlan().seed);
     const { data } = await h.call(listCategories, {});
 
     const everyday = data.category_groups.find((g: { name: string }) => g.name === "Everyday Expenses");
     const groceries = everyday.categories.find((c: { name: string }) => c.name === "Groceries");
-    expect(groceries).toMatchObject({ budgeted: "50.00", activity: "-14.00", balance: "36.00", goal_target: null });
+    expect(groceries).toMatchObject({ assigned: 50, activity: -14, available: 36 });
+    expect(everyday.assigned_total).toBe(70);
+    expect(data.currency).toBe("USD");
   });
 
-  it("passes through goal fields, formatting the target in dollars", async () => {
+  it("includes a goal summary only for categories with a goal", async () => {
     const group = categoryGroupFixture({ name: "Goals" });
-    const category = categoryFixture({
+    const withGoal = categoryFixture({
       category_group_id: group.id,
       name: "New Roof",
       goal_type: "NEED",
       goal_target: 60000,
+      goal_target_date: "2024-12-01",
+      goal_under_funded: 5000,
       goal_percentage_complete: 42,
     });
-    const h = setup(planFixture({ categoryGroups: [group], categories: [category] }));
+    const withoutGoal = categoryFixture({ category_group_id: group.id, name: "Misc" });
+    const h = setup(planFixture({ categoryGroups: [group], categories: [withGoal, withoutGoal] }));
 
     const { data } = await h.call(listCategories, {});
 
-    expect(data.category_groups[0].categories[0]).toMatchObject({
-      goal_type: "NEED",
-      goal_target: "60.00",
-      goal_percentage_complete: 42,
+    const categories = data.category_groups[0].categories;
+    expect(categories.find((c: { name: string }) => c.name === "New Roof").goal).toMatchObject({
+      type: "NEED",
+      target: 60,
+      target_date: "2024-12-01",
+      underfunded: 5,
+      percent_complete: 42,
     });
+    expect(categories.find((c: { name: string }) => c.name === "Misc").goal).toBeUndefined();
+  });
+
+  it("fetches numbers for the requested month, not just the current one", async () => {
+    const h = setup(standardPlan().seed);
+    const { data } = await h.call(listCategories, { month: "2024-02-01" });
+
+    const everyday = data.category_groups.find((g: { name: string }) => g.name === "Everyday Expenses");
+    const groceries = everyday.categories.find((c: { name: string }) => c.name === "Groceries");
+    // February wasn't budgeted, and February's grocery spending is separate from January's.
+    expect(groceries).toMatchObject({ assigned: 0, activity: -5.5, available: -5.5 });
   });
 
   it("uses the default plan, or the one given", async () => {
     const h = setup();
     await h.call(listCategories, {});
     await h.call(listCategories, { planId: "last-used" });
-    expect(h.fake.calls.map((c) => c.args[0])).toEqual([h.planId, "last-used"]);
+    expect(h.fake.calls.filter((c) => c.method === "months.getPlanMonth").map((c) => c.args[0])).toEqual([h.planId, "last-used"]);
   });
 
   it("reports API failures as errors", async () => {

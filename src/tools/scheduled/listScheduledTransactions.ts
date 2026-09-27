@@ -1,32 +1,27 @@
 import { defineTool } from "../defineTool.js";
-import { planIdParam } from "../common.js";
+import { accountRef, planIdParam } from "../common.js";
+import { formatScheduledTransaction } from "./format.js";
 
 export const listScheduledTransactions = defineTool({
   name: "ynab_list_scheduled_transactions",
   title: "List Scheduled Transactions",
-  description: "Lists all scheduled (recurring) transactions in a plan.",
-  inputSchema: { planId: planIdParam },
+  description: "Lists scheduled (recurring) transactions, soonest next occurrence first. Amounts are signed: negative is an outflow.",
+  inputSchema: {
+    planId: planIdParam,
+    account: accountRef.optional().describe("Only scheduled transactions on this account"),
+  },
   annotations: { readOnlyHint: true, openWorldHint: true },
   async handler(input, ctx) {
-    const response = await ctx.api.scheduledTransactions.getScheduledTransactions(ctx.planId(input.planId));
-    const scheduledTransactions = response.data.scheduled_transactions
-      .filter((txn) => !txn.deleted)
-      .map((txn) => ({
-        id: txn.id,
-        date_first: txn.date_first,
-        date_next: txn.date_next,
-        frequency: txn.frequency,
-        amount: (txn.amount / 1000).toFixed(2),
-        memo: txn.memo,
-        flag_color: txn.flag_color,
-        account_id: txn.account_id,
-        account_name: txn.account_name,
-        payee_id: txn.payee_id,
-        payee_name: txn.payee_name,
-        category_id: txn.category_id,
-        category_name: txn.category_name,
-        transfer_account_id: txn.transfer_account_id,
-      }));
-    return { scheduled_transactions: scheduledTransactions, count: scheduledTransactions.length };
+    const planId = ctx.planId(input.planId);
+    const currency = await ctx.currency(planId);
+    const account = input.account ? await ctx.lookup.resolveAccount(planId, input.account) : undefined;
+
+    const response = await ctx.api.scheduledTransactions.getScheduledTransactions(planId);
+    const scheduled = response.data.scheduled_transactions
+      .filter((txn) => !txn.deleted && (!account || txn.account_id === account.id))
+      .sort((a, b) => (a.date_next < b.date_next ? -1 : a.date_next > b.date_next ? 1 : 0))
+      .map((txn) => formatScheduledTransaction(txn, currency));
+
+    return { currency: currency.iso_code, scheduled_transactions: scheduled, count: scheduled.length };
   },
 });

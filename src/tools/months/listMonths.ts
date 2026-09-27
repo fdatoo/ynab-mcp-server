@@ -1,23 +1,33 @@
 import { defineTool } from "../defineTool.js";
-import { planIdParam } from "../common.js";
+import { monthParam, normalizeMonth, planIdParam } from "../common.js";
+import { fromMilliunits } from "../../ynab/money.js";
 
 export const listMonths = defineTool({
   name: "ynab_list_months",
   title: "List Months",
-  description: "Lists all plan months. Each month contains summary information about budgeting status.",
-  inputSchema: { planId: planIdParam },
+  description: "Lists plan months with their income, assigned and activity totals, Ready to Assign, and age of money.",
+  inputSchema: {
+    planId: planIdParam,
+    sinceMonth: monthParam.optional().describe("Only months from this month onward"),
+  },
   annotations: { readOnlyHint: true, openWorldHint: true },
   async handler(input, ctx) {
-    const response = await ctx.api.months.getPlanMonths(ctx.planId(input.planId));
-    const months = response.data.months.map((month) => ({
-      month: month.month,
-      note: month.note,
-      income: (month.income / 1000).toFixed(2),
-      budgeted: (month.budgeted / 1000).toFixed(2),
-      activity: (month.activity / 1000).toFixed(2),
-      to_be_budgeted: (month.to_be_budgeted / 1000).toFixed(2),
-      age_of_money: month.age_of_money,
-    }));
-    return { months, month_count: months.length };
+    const planId = ctx.planId(input.planId);
+    const currency = await ctx.currency(planId);
+    const since = input.sinceMonth ? normalizeMonth(input.sinceMonth) : undefined;
+
+    const { data } = await ctx.api.months.getPlanMonths(planId);
+    const months = data.months
+      .filter((month) => !month.deleted && (!since || month.month >= since))
+      .map((month) => ({
+        month: month.month,
+        income: fromMilliunits(month.income, currency),
+        assigned: fromMilliunits(month.budgeted, currency),
+        activity: fromMilliunits(month.activity, currency),
+        ready_to_assign: fromMilliunits(month.to_be_budgeted, currency),
+        age_of_money: month.age_of_money ?? null,
+      }));
+
+    return { currency: currency.iso_code, months, month_count: months.length };
   },
 });

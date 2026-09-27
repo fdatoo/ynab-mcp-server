@@ -9,7 +9,7 @@ describe("ynab_import_transactions", () => {
 
     const { data } = await h.call(importTransactions, {});
 
-    expect(data).toEqual({ success: true, transaction_ids: [], imported_count: 0, message: "No new transactions to import" });
+    expect(data).toEqual({ imported_count: 0, transaction_ids: [] });
   });
 
   it("creates the queued transactions", async () => {
@@ -24,7 +24,6 @@ describe("ynab_import_transactions", () => {
 
     expect(data.imported_count).toBe(2);
     expect(data.transaction_ids).toHaveLength(2);
-    expect(data.message).toContain("Successfully imported 2 transaction(s)");
     for (const id of data.transaction_ids) {
       const stored = await h.fake.api.transactions.getTransactionById(h.planId, id);
       expect(stored.data.transaction.deleted).toBe(false);
@@ -42,6 +41,18 @@ describe("ynab_import_transactions", () => {
     const { data } = await h.call(importTransactions, {});
 
     expect(data.imported_count).toBe(1);
+  });
+
+  it("invalidates the cached payees, so a newly imported payee resolves right away", async () => {
+    const account = accountFixture({ name: "Checking" });
+    const h = setup(planFixture({ accounts: [account] }));
+    await h.ctx.lookup.payees(h.planId); // prime the cache before the payee exists
+    h.fake.queueImport(h.planId, [transactionFixture({ account_id: account.id, date: "2024-01-05", amount: -1000, payee_name: "New Bank Payee" })]);
+
+    await h.call(importTransactions, {});
+
+    const payee = await h.ctx.lookup.resolvePayee(h.planId, "New Bank Payee");
+    expect(payee.name).toBe("New Bank Payee");
   });
 
   it("reports API failures as errors", async () => {

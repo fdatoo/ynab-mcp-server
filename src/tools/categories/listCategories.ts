@@ -1,35 +1,56 @@
+import { z } from "zod";
 import { defineTool } from "../defineTool.js";
-import { planIdParam } from "../common.js";
+import { monthParam, normalizeMonth, planIdParam } from "../common.js";
+import { fromMilliunits } from "../../ynab/money.js";
+import { formatCategorySummary } from "./format.js";
 
 export const listCategories = defineTool({
   name: "ynab_list_categories",
   title: "List Categories",
   description:
-    "Lists all categories in a plan, grouped by category group. Useful for finding category IDs when creating transactions or updating budgets.",
-  inputSchema: { planId: planIdParam },
+    "Lists categories grouped by category group, with each category's assigned, activity and available amounts for a month. " +
+    "Useful for finding category ids and seeing what needs attention.",
+  inputSchema: {
+    planId: planIdParam,
+    month: monthParam.default("current"),
+    includeHidden: z.boolean().default(false).describe("Include hidden categories and groups. The 'hidden' field is only returned when this is true."),
+  },
   annotations: { readOnlyHint: true, openWorldHint: true },
   async handler(input, ctx) {
-    const response = await ctx.api.categories.getCategories(ctx.planId(input.planId));
-    const categoryGroups = response.data.category_groups
-      .filter((group) => !group.deleted && !group.hidden)
-      .map((group) => ({
-        id: group.id,
-        name: group.name,
-        hidden: group.hidden,
-        categories: group.categories
-          .filter((cat) => !cat.deleted && !cat.hidden)
-          .map((cat) => ({
-            id: cat.id,
-            name: cat.name,
-            budgeted: (cat.budgeted / 1000).toFixed(2),
-            activity: (cat.activity / 1000).toFixed(2),
-            balance: (cat.balance / 1000).toFixed(2),
-            goal_type: cat.goal_type,
-            goal_target: cat.goal_target ? (cat.goal_target / 1000).toFixed(2) : null,
-            goal_percentage_complete: cat.goal_percentage_complete,
-          })),
-      }));
+    const planId = ctx.planId(input.planId);
+    const currency = await ctx.currency(planId);
+    const month = normalizeMonth(input.month);
+
+    const [monthResponse, categoriesResponse] = await Promise.all([
+      ctx.api.months.getPlanMonth(planId, month),
+      ctx.api.categories.getCategories(planId),
+    ]);
+    const monthCategoriesById = new Map(monthResponse.data.month.categories.map((category) => [category.id, category]));
+
+    const categoryGroups = categoriesResponse.data.category_groups
+      .filter((group) => !group.deleted && !group.internal && (input.includeHidden || !group.hidden))
+      .map((group) => {
+        const monthCategories = group.categories
+          .map((category) => monthCategoriesById.get(category.id) ?? category)
+          .filter((category) => !category.deleted && (input.includeHidden || !category.hidden));
+        return {
+          id: group.id,
+          name: group.name,
+          ...(input.includeHidden ? { hidden: group.hidden } : {}),
+          categories: monthCategories.map((category) => formatCategorySummary(category, currency, input.includeHidden)),
+          assigned_total: fromMilliunits(monthCategories.reduce((sum, c) => sum + c.budgeted, 0), currency),
+          activity_total: fromMilliunits(monthCategories.reduce((sum, c) => sum + c.activity, 0), currency),
+          available_total: fromMilliunits(monthCategories.reduce((sum, c) => sum + c.balance, 0), currency),
+        };
+      });
+
     const categoryCount = categoryGroups.reduce((sum, group) => sum + group.categories.length, 0);
-    return { category_groups: categoryGroups, group_count: categoryGroups.length, category_count: categoryCount };
+    return {
+      currency: currency.iso_code,
+      month,
+      category_groups: categoryGroups,
+      group_count: categoryGroups.length,
+      category_count: categoryCount,
+    };
   },
 });

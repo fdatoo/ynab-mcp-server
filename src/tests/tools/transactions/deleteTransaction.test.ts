@@ -16,7 +16,8 @@ describe("ynab_delete_transaction", () => {
 
     const { data } = await h.call(deleteTransaction, { transactionId: seeded.id });
 
-    expect(data).toEqual({ success: true, transactionId: seeded.id, message: "Transaction deleted successfully" });
+    expect(data.currency).toBe("USD");
+    expect(data.deleted).toMatchObject({ id: seeded.id, amount: -1, account: "Checking" });
     const after = await h.fake.api.transactions.getTransactionById(h.planId, seeded.id);
     expect(after.data.transaction.deleted).toBe(true);
   });
