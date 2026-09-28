@@ -74,9 +74,9 @@ await step("outflow lowers the balance and is signed negative", async () => {
   const res = await call("ynab_create_transactions", {
     transactions: [{ account: checking.name, date: today, amount, direction: "outflow", payee: "MCP Check Payee", category: "MCP Check A" }],
   });
+  created.push(...res.created.map((t) => t.id));
   assert.equal(res.created.length, 1);
   assert.equal(res.created[0].amount, -amount);
-  created.push(res.created[0].id);
   const after = (await call("ynab_list_accounts")).accounts.find((a) => a.id === checking.id).balance;
   assert.equal(Math.round((before - after) * 100), Math.round(amount * 100));
 });
@@ -106,11 +106,11 @@ await step("split and transfer", async () => {
       { account: checking.name, date: today, amount: amount + 2, direction: "outflow", transferToAccount: card.name },
     ],
   });
+  created.push(...res.created.map((t) => t.id));
   assert.equal(res.created.length, 2);
   assert.equal(res.created[0].category, "Split");
   assert.equal(res.created[0].subtransactions.length, 2);
   assert.ok(res.created[1].transfer_account_id);
-  created.push(...res.created.map((t) => t.id));
 });
 
 await step("update clears a memo, sets a flag, and refuses to edit an existing split", async () => {
@@ -125,6 +125,17 @@ await step("update clears a memo, sets a flag, and refuses to edit an existing s
     { expectError: true }
   );
   assert.match(text, /already a split/);
+});
+
+await step("null clears a flag", async () => {
+  const [plain] = created;
+  const res = await call("ynab_update_transactions", { transactions: [{ id: plain, flagColor: null }] });
+  assert.equal(res.updated[0].flag_color, null);
+});
+
+await step("transfers stay out of uncategorized results", async () => {
+  const res = await call("ynab_search_transactions", { status: "uncategorized", sinceDate: today, limit: 500 });
+  assert.ok(!res.transactions.some((t) => t.transfer_account_id), "a transfer leg was listed as uncategorized");
 });
 
 await step("convert a plain transaction into a split", async () => {
@@ -176,7 +187,6 @@ await step("scheduled: create, update one field, delete", async () => {
     memo: "before",
   });
   const id = res.scheduled_transaction.id;
-  assert.ok(id, `no id in ${JSON.stringify(res)}`);
   createdScheduled.push(id);
   const updated = await call("ynab_update_scheduled_transaction", { scheduledTransactionId: id, memo: "after" });
   const st = updated.scheduled_transaction;

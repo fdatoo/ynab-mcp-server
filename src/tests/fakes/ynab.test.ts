@@ -66,10 +66,10 @@ describe("transaction ordering and filtering", () => {
     expect(unapproved.data.transactions.length).toBeGreaterThan(0);
 
     const uncategorized = await fake.api.transactions.getTransactions(planId, undefined, undefined, "uncategorized");
-    expect(uncategorized.data.transactions.every((t) => !t.category_id && !t.transfer_account_id)).toBe(true);
-    // The initial deposit, the unknown-kiosk purchase and the February
-    // paycheck are all uncategorized in the standard scenario.
-    expect(uncategorized.data.transactions.length).toBe(3);
+    expect(uncategorized.data.transactions.every((t) => !t.category_id)).toBe(true);
+    // The initial deposit, the unknown-kiosk purchase, the February paycheck,
+    // and both legs of the transfer (the real API includes transfer legs).
+    expect(uncategorized.data.transactions.length).toBe(5);
   });
 });
 
@@ -442,5 +442,15 @@ describe("split payees", () => {
     const [split] = (await fake.api.transactions.getTransactions(planId, "2024-01-20", "2024-01-20")).data.transactions;
     expect(split.subtransactions).toHaveLength(2);
     expect(split.payee_name).toBe("Corner Grocer");
+  });
+});
+
+describe("uncategorized filter", () => {
+  it("includes transfer legs, as the real API does", async () => {
+    resetIds();
+    const fake = new FakeYnab();
+    const planId = fake.addPlan(standardPlan().seed);
+    const rows = (await fake.api.transactions.getTransactions(planId, undefined, undefined, "uncategorized")).data.transactions;
+    expect(rows.some((t) => t.transfer_account_id)).toBe(true);
   });
 });

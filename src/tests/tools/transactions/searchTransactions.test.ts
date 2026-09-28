@@ -128,4 +128,34 @@ describe("ynab_search_transactions", () => {
     const h = setup();
     await expect(h.call(searchTransactions, { sinceDate: "Jan 5" })).rejects.toThrow(/YYYY-MM-DD/);
   });
+
+  it("leaves transfers out of uncategorized results, though the API includes them", async () => {
+    const h = setup();
+    const { data } = await h.call(searchTransactions, { status: "uncategorized", sinceDate: "2024-01-01" });
+    expect(data.transactions.some((t: { transfer_account_id?: string }) => t.transfer_account_id)).toBe(false);
+    expect(data.transactions.map((t: Row) => t.payee).sort()).toEqual(["Employer", "Employer", "Unknown Kiosk"]);
+  });
+
+  it("finds text in a split line's memo", async () => {
+    const account = accountFixture({ name: "Checking" });
+    const h = setup(
+      planFixture({
+        accounts: [account],
+        transactions: [
+          transactionFixture({
+            account_id: account.id,
+            date: "2024-02-10",
+            amount: -3000,
+            payee_name: "Big Box",
+            subtransactions: [
+              { amount: -1000, memo: "birthday candles" },
+              { amount: -2000, memo: "paper towels" },
+            ],
+          }),
+        ],
+      })
+    );
+    const { data } = await h.call(searchTransactions, { text: "candles" });
+    expect(data.transactions.map((t: Row) => t.payee)).toEqual(["Big Box"]);
+  });
 });

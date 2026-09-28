@@ -3,6 +3,7 @@ import type * as ynab from "ynab";
 import { defineTool } from "../defineTool.js";
 import { accountRef, dateParam, planIdParam } from "../common.js";
 import { fromMilliunits } from "../../ynab/money.js";
+import { isBalanceEntry, isTransfer } from "../system.js";
 
 interface Line {
   amount: number;
@@ -13,10 +14,10 @@ interface Line {
 }
 
 /** One line per split part, so each part counts toward its own category. */
-function lines(txn: ynab.TransactionDetail): Line[] {
+function lines(txn: ynab.TransactionDetail, transferPayees: ReadonlySet<string>): Line[] {
   const live = txn.subtransactions?.filter((sub) => !sub.deleted) ?? [];
   if (live.length === 0) {
-    return [{ amount: txn.amount, categoryId: txn.category_id, categoryName: txn.category_name, payeeName: txn.payee_name, isTransfer: !!txn.transfer_account_id }];
+    return [{ amount: txn.amount, categoryId: txn.category_id, categoryName: txn.category_name, payeeName: txn.payee_name, isTransfer: isTransfer(txn, transferPayees) }];
   }
   return live.map((sub) => ({
     amount: sub.amount,
@@ -32,7 +33,7 @@ export const spendingReport = defineTool({
   title: "Spending Report",
   description:
     "Totals transactions over a date range by category, category group, or payee, largest first. Split transactions count toward " +
-    "each line's own category. Transfers between accounts are left out unless includeTransfers is set. By default reports outflows " +
+    "each line's own category. Transfers between accounts are left out unless includeTransfers is set, and starting balances and balance adjustments are always left out. By default reports outflows " +
     "(spending) as positive totals; 'inflows' reports income, 'net' sums both with outflows negative. Defaults to the current month so far.",
   inputSchema: {
     planId: planIdParam,
@@ -56,6 +57,7 @@ export const spendingReport = defineTool({
       : await t.getTransactions(planId, since, input.untilDate);
 
     const groupOf = new Map((await ctx.lookup.categories(planId)).map((c) => [c.id, c.category_group_name]));
+    const transferPayees = new Set((await ctx.lookup.payees(planId)).filter((p) => p.transfer_account_id).map((p) => p.id));
     const keyOf = (line: Line) => {
       if (input.groupBy === "payee") return line.payeeName ?? "(no payee)";
       if (!line.categoryId) return line.isTransfer ? "(transfer)" : "(uncategorized)";
@@ -69,9 +71,10 @@ export const spendingReport = defineTool({
     const totals = new Map<string, { total: number; count: number }>();
     let transactionCount = 0;
     for (const txn of data.transactions as ynab.TransactionDetail[]) {
-      if (txn.deleted) continue;
+      // Starting balances and balance adjustments are neither spending nor income.
+      if (txn.deleted || isBalanceEntry(txn.payee_name)) continue;
       let counted = false;
-      for (const line of lines(txn)) {
+      for (const line of lines(txn, transferPayees)) {
         if (line.isTransfer && !input.includeTransfers) continue;
         if (!counts(line)) continue;
         const row = totals.get(keyOf(line)) ?? { total: 0, count: 0 };

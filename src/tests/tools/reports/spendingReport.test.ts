@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { spendingReport } from "../../../tools/reports/spendingReport.js";
+import { accountFixture, planFixture, transactionFixture } from "../../fakes/ynab.js";
 import { setup } from "../harness.js";
 
 type Row = { name: string; total: number; lines: number; percent: number };
@@ -57,5 +58,23 @@ describe("ynab_spending_report", () => {
     const { data } = await h.call(spendingReport, { sinceDate: "2024-01-01", untilDate: "2024-01-31", top: 1 });
     expect(data.rows.map((r: Row) => r.name)).toEqual(["Groceries", "Other (2)"]);
     expect(data.rows[1].total).toBe(11.5);
+  });
+
+  it("leaves starting balances and balance adjustments out of income and spending", async () => {
+    const account = accountFixture({ name: "Checking" });
+    const h = setup(
+      planFixture({
+        accounts: [account],
+        transactions: [
+          transactionFixture({ account_id: account.id, date: "2024-02-01", amount: 500000, payee_name: "Starting Balance" }),
+          transactionFixture({ account_id: account.id, date: "2024-02-03", amount: -2000, payee_name: "Reconciliation Balance Adjustment" }),
+          transactionFixture({ account_id: account.id, date: "2024-02-04", amount: 7000, payee_name: "Employer" }),
+        ],
+      })
+    );
+    const income = await h.call(spendingReport, { sinceDate: "2024-02-01", measure: "inflows", groupBy: "payee" });
+    expect(byName(income.data.rows)).toEqual({ Employer: 7 });
+    const spending = await h.call(spendingReport, { sinceDate: "2024-02-01", groupBy: "payee" });
+    expect(spending.data.rows).toEqual([]);
   });
 });

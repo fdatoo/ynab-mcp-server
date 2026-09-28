@@ -216,10 +216,16 @@ function isUncategorized(t: StoredTransaction): boolean {
   return !t.category_id && !t.transfer_account_id && t.subtransactions.length === 0;
 }
 
+// The real API's type=uncategorized also returns transfer legs between the
+// user's own accounts (verified live), which carry no category either.
+function matchesUncategorizedFilter(t: StoredTransaction): boolean {
+  return !t.category_id && t.subtransactions.length === 0;
+}
+
 function matchesType(t: StoredTransaction, type: TxnType | undefined): boolean {
   if (!type) return true;
   if (type === "unapproved") return !t.approved;
-  return isUncategorized(t);
+  return matchesUncategorizedFilter(t);
 }
 
 /** Oldest-first by date, ties broken by insertion order (this is what the real API does). */

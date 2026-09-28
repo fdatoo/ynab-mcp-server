@@ -4,6 +4,7 @@ import { defineTool } from "../defineTool.js";
 import { accountRef, categoryRef, clearedParam, dateParam, payeeRef, planIdParam } from "../common.js";
 import { formatHybridTransaction, formatTransaction } from "../format.js";
 import { fromMilliunits, toMilliunits } from "../../ynab/money.js";
+import { isTransfer } from "../system.js";
 
 export const DEFAULT_WINDOW_DAYS = 90;
 
@@ -13,12 +14,18 @@ function daysAgo(days: number, today = new Date()): string {
   return date.toISOString().slice(0, 10);
 }
 
+/** Payee and memo, including each split line's, so a memo on one line of a split is findable. */
+function searchableText(row: { payee: string | null; memo: string | null; subtransactions?: Array<{ payee: string | null; memo: string | null }> }) {
+  const parts = [row.payee, row.memo, ...(row.subtransactions ?? []).flatMap((sub) => [sub.payee, sub.memo])];
+  return parts.filter(Boolean).join(" ").toLowerCase();
+}
+
 export const searchTransactions = defineTool({
   name: "ynab_search_transactions",
   title: "Search Transactions",
   description:
     "Finds transactions, newest first. Filter by date range, account, category, payee, status (unapproved or uncategorized), " +
-    "text in the payee or memo, amount range, and cleared status. Without sinceDate only the last 90 days are searched. " +
+    "text in the payee or memo (split lines included), amount range, and cleared status. Without sinceDate only the last 90 days are searched. " +
     "Amounts are signed: negative is an outflow. Filtering by category returns the matching lines of split transactions too.",
   inputSchema: {
     planId: planIdParam,
@@ -28,7 +35,7 @@ export const searchTransactions = defineTool({
     category: categoryRef.optional(),
     payee: payeeRef.optional(),
     status: z.enum(["unapproved", "uncategorized"]).optional().describe("Only unapproved, or only uncategorized, transactions"),
-    text: z.string().min(1).optional().describe("Case-insensitive text to find in the payee name or memo"),
+    text: z.string().min(1).optional().describe("Case-insensitive text to find in the payee name or memo, including split lines"),
     minAmount: z.number().nonnegative().optional().describe("Smallest absolute amount, in currency units"),
     maxAmount: z.number().nonnegative().optional().describe("Largest absolute amount, in currency units"),
     direction: z.enum(["outflow", "inflow"]).optional().describe("Only outflows or only inflows"),
@@ -71,13 +78,19 @@ export const searchTransactions = defineTool({
         .map((txn) => ({ row: formatTransaction(txn as ynab.TransactionDetail, currency), accountId: txn.account_id, payeeId: txn.payee_id, categoryId: txn.category_id, milliunits: txn.amount }));
     }
 
+    // type=uncategorized also returns transfer legs between the user's own accounts.
+    const transferPayees =
+      input.status === "uncategorized"
+        ? new Set((await ctx.lookup.payees(planId)).filter((p) => p.transfer_account_id).map((p) => p.id))
+        : undefined;
     const text = input.text?.toLowerCase();
     const min = input.minAmount !== undefined ? toMilliunits(input.minAmount, currency) : undefined;
     const max = input.maxAmount !== undefined ? toMilliunits(input.maxAmount, currency) : undefined;
     const matches = rows.filter(({ row, accountId, payeeId, milliunits }) => {
+      if (transferPayees && isTransfer({ transfer_account_id: "transfer_account_id" in row ? row.transfer_account_id : undefined, payee_id: payeeId ?? undefined }, transferPayees)) return false;
       if (account && accountId !== account.id) return false;
       if (payee && payeeId !== payee.id) return false;
-      if (text && !`${row.payee ?? ""} ${row.memo ?? ""}`.toLowerCase().includes(text)) return false;
+      if (text && !searchableText(row).includes(text)) return false;
       if (min !== undefined && Math.abs(milliunits) < min) return false;
       if (max !== undefined && Math.abs(milliunits) > max) return false;
       if (input.direction === "outflow" && milliunits >= 0) return false;
