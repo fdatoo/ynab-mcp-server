@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-09-28
+
+### Added
+- `ynab_suggest_categories`: category suggestions for uncategorized transactions from each payee's history, without third-party calls.
+- `ynab_auto_assign`: fills underfunded goals from Ready to Assign, largest shortfall first, previewing by default.
+- `ifUncategorized` on `ynab_update_transactions` items, so a suggestion never overwrites a category changed in the meantime.
+- Search text matches split-line memos and payees.
+- Optional inputs accept `null` as "not given".
+
+### Fixed
+- Unknown arguments were silently dropped, so the old `budgetId` fell back to the default plan. They are now rejected.
+- Searching for uncategorized transactions listed transfer legs.
+- The spending report counted starting balances and balance adjustments as income or spending.
+- Transactions could be given a credit card payment category, which YNAB silently turns into Uncategorized. That is refused now.
+
+### Changed
+- Requires Node 22 or later, which is what CI tests.
+
 ## [1.0.0] - 2026-09-27
 
 First release of the fork, published as `@fdatoo/ynab-mcp-server`. It branches from upstream 0.1.2; upstream's later 0.2.x and 0.3.0 releases are a separate line and are not included.

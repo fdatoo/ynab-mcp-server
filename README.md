@@ -4,7 +4,7 @@ An MCP server that lets an AI assistant read and manage your [YNAB](https://ynab
 
 This is a fork of [calebl/ynab-mcp-server](https://github.com/calebl/ynab-mcp-server), reworked so an assistant can do nearly everything the YNAB API allows without falling back to the YNAB website. Compared with upstream:
 
-- It covers about twice as much of the API: splits, transfers, batch create and update, reconciliation, recurring transactions, category and group management, moving money, and a spending report.
+- It covers about twice as much of the API: splits, transfers, batch create and update, reconciliation, recurring transactions, category and group management, moving money, auto-assign, category suggestions from your own history, and a spending report.
 - Amounts are in your plan's currency, and every write states its direction, so a purchase cannot be recorded as income by a sign mistake.
 - Accounts, categories and payees can be named instead of looked up by id.
 - Errors reach the assistant as errors, repeated create requests don't duplicate transactions, and the assistant is told which things only the YNAB app can do.
@@ -60,8 +60,9 @@ Transactions
 - `ynab_search_transactions`: newest first, filtered by dates, account, category, payee, unapproved or uncategorized, text, amount range, direction and cleared status. Searches the last 90 days unless told otherwise.
 - `ynab_get_transaction`
 - `ynab_create_transactions`: one or many, including splits and transfers. A repeated request is recognized (same account, date and amount) and not created twice unless the user confirms it is separate.
-- `ynab_update_transactions`: partial updates to one or many; can turn a transaction into a split.
+- `ynab_update_transactions`: partial updates to one or many; can turn a transaction into a split. `ifUncategorized` skips a transaction that was categorized in the meantime.
 - `ynab_approve_transactions`: by id or everything unapproved matching a filter, with a dry run.
+- `ynab_suggest_categories`: proposes categories for uncategorized transactions from each payee's history. Nothing leaves your machine except the usual YNAB request.
 - `ynab_delete_transaction`
 - `ynab_import_transactions`: pulls pending transactions from linked banks.
 - `ynab_reconcile_account`: compares a statement balance with the cleared balance and reconciles, previewing first.
@@ -70,6 +71,7 @@ Plan and categories
 - `ynab_budget_summary`: Ready to Assign, overspent categories, underfunded goals, top spending.
 - `ynab_list_categories`, `ynab_get_category`
 - `ynab_assign`, `ynab_move_money`, `ynab_list_money_movements`
+- `ynab_auto_assign`: fills underfunded goals from Ready to Assign, largest shortfall first, previewing first.
 - `ynab_create_category`, `ynab_update_category`, `ynab_create_category_group`, `ynab_update_category_group`
 - `ynab_list_months`, `ynab_spending_report`
 
