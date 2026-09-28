@@ -14,7 +14,7 @@ import {
   signedMilliunits,
 } from "../common.js";
 import { formatTransaction } from "../format.js";
-import { payeeFields, splitLine } from "./shared.js";
+import { payeeFields, splitLine, transactionCategoryId } from "./shared.js";
 import { toMilliunits, type Currency } from "../../ynab/money.js";
 
 const newTransaction = z.strictObject({
@@ -70,7 +70,7 @@ async function prepare(ctx: ToolContext, planId: string, currency: Currency, inp
     for (const line of input.splits) {
       subtransactions.push({
         amount: signedMilliunits(toMilliunits(line.amount, currency), line.direction ?? input.direction),
-        category_id: line.category ? (await ctx.lookup.resolveCategory(planId, line.category)).id : undefined,
+        category_id: line.category ? await transactionCategoryId(ctx, planId, line.category) : undefined,
         ...(line.payee ? await payeeFields(ctx, planId, line.payee, newPayees) : {}),
         memo: line.memo,
       });
@@ -89,7 +89,7 @@ async function prepare(ctx: ToolContext, planId: string, currency: Currency, inp
       date: input.date,
       amount,
       ...payee,
-      category_id: input.category ? (await ctx.lookup.resolveCategory(planId, input.category)).id : undefined,
+      category_id: input.category ? await transactionCategoryId(ctx, planId, input.category) : undefined,
       memo: input.memo,
       cleared: input.cleared as ynab.TransactionClearedStatus,
       approved: input.approved,

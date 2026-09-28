@@ -27,3 +27,14 @@ export function isTransfer(
 ): boolean {
   return !!txn.transfer_account_id || (!!txn.payee_id && !!transferPayeeIds?.has(txn.payee_id));
 }
+
+/**
+ * A credit card payment category. The API accepts one on a transaction but
+ * silently stores the transaction as Uncategorized (verified live), so tools
+ * that categorise transactions must refuse these. Assigning money to them is
+ * normal. There is no field linking the category to its card, so the group
+ * name is the signal.
+ */
+export function isCreditCardPaymentCategory(category: { category_group_name?: string | null }): boolean {
+  return category.category_group_name === "Credit Card Payments";
+}

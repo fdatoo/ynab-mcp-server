@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createTransactions } from "../../../tools/transactions/createTransactions.js";
 import { searchTransactions } from "../../../tools/transactions/searchTransactions.js";
+import { accountFixture, categoryFixture, categoryGroupFixture, planFixture } from "../../fakes/ynab.js";
 import { setup } from "../harness.js";
 
 const base = { account: "Checking", date: "2024-02-15" };
@@ -179,5 +180,17 @@ describe("ynab_create_transactions", () => {
       [2, 5],
     ]);
     expect(data.created[0].category).toBe("Split");
+  });
+
+  it("refuses a credit card payment category, which YNAB would silently drop", async () => {
+    const checking = accountFixture({ name: "Checking" });
+    const payments = categoryGroupFixture({ name: "Credit Card Payments", internal: true });
+    const visa = categoryFixture({ category_group_id: payments.id, name: "Visa" });
+    const h = setup(planFixture({ accounts: [checking], categoryGroups: [payments], categories: [visa] }));
+    const result = await h.call(createTransactions, {
+      transactions: [{ account: "Checking", date: "2024-02-15", amount: 5, direction: "outflow", category: "Visa" }],
+    });
+    expect(result.isError).toBe(true);
+    expect(result.text).toMatch(/credit card payment category/);
   });
 });
