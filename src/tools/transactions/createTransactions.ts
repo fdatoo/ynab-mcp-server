@@ -147,7 +147,7 @@ export const createTransactions = defineTool({
   title: "Create Transactions",
   description:
     "Creates one or more transactions; each result carries the index of the request item it came from. Every amount is positive with a required direction: 'outflow' for spending, 'inflow' for income or refunds. " +
-    "Accounts, categories and payees can be given by name. Supports splits across categories and transfers between accounts. " +
+    "Accounts, categories and payees can be given by name. Without a category, YNAB may fill in the payee's usual one; the result shows what was set. Supports splits across categories and transfers between accounts. " +
     "If a transaction with the same account, date and amount already exists it is not created again and is returned under skipped_duplicates; " +
     "set allowDuplicate only when the user confirms it is a separate transaction.",
   inputSchema: {

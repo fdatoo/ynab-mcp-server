@@ -49,6 +49,7 @@ const today = new Date().toISOString().slice(0, 10);
 const cents = (Date.now() % 9000) / 100 + 10; // a distinct amount per run, so earlier runs don't look like duplicates
 const amount = Math.round(cents * 100) / 100;
 const created = [];
+const createdExtra = [];
 const createdScheduled = [];
 
 const accounts = (await call("ynab_list_accounts")).accounts;
@@ -87,6 +88,28 @@ await step("a repeated create is skipped as a duplicate", async () => {
   });
   assert.equal(res.created.length, 0);
   assert.equal(res.skipped_duplicates.length, 1);
+});
+
+await step("suggest a category from history and apply it with the guard", async () => {
+  const res = await call("ynab_create_transactions", {
+    transactions: [{ account: checking.name, date: today, amount: amount + 3, direction: "outflow", payee: "MCP Check Payee" }],
+  });
+  createdExtra.push(...res.created.map((t) => t.id));
+  const id = res.created[0].id;
+  // YNAB fills in a known payee's usual category on create, so clear it to get an uncategorized one.
+  await call("ynab_update_transactions", { transactions: [{ id, category: null }] });
+  const suggestions = await call("ynab_suggest_categories", { sinceDate: today });
+  const mine = suggestions.suggestions.find((s) => s.transaction.id === id);
+  assert.ok(mine, `no suggestion for ${id}: ${JSON.stringify(suggestions).slice(0, 400)}`);
+  assert.match(mine.suggestion.category, /MCP Check A$/);
+  const applied = await call("ynab_update_transactions", {
+    transactions: [{ id, category: mine.suggestion.category_id, ifUncategorized: true }],
+  });
+  assert.equal(applied.updated.length, 1);
+  const again = await call("ynab_update_transactions", {
+    transactions: [{ id, category: "MCP Check B", ifUncategorized: true }],
+  });
+  assert.equal(again.skipped_changed?.length, 1, "the guard should skip a transaction that is already categorized");
 });
 
 await step("split and transfer", async () => {
@@ -220,7 +243,7 @@ await step("summary and report still read", async () => {
 });
 
 await step("clean up created transactions", async () => {
-  for (const id of created) {
+  for (const id of [...created, ...createdExtra]) {
     try {
       await call("ynab_delete_transaction", { transactionId: id });
     } catch (error) {

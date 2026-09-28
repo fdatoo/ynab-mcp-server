@@ -26,6 +26,7 @@ import { getTransaction } from "./transactions/getTransaction.js";
 import { createTransactions } from "./transactions/createTransactions.js";
 import { deleteTransaction } from "./transactions/deleteTransaction.js";
 import { searchTransactions } from "./transactions/searchTransactions.js";
+import { suggestCategories } from "./transactions/suggestCategories.js";
 import { importTransactions } from "./transactions/importTransactions.js";
 import { updateTransactions } from "./transactions/updateTransactions.js";
 import { reconcileAccount } from "./transactions/reconcileAccount.js";
@@ -51,6 +52,7 @@ export const tools: Tool<any>[] = [
   getTransaction,
   listPayees,
   searchTransactions,
+  suggestCategories,
   deleteTransaction,
   listCategories,
   listAccounts,

@@ -304,6 +304,100 @@ describe("ynab_update_transactions", () => {
     expect(h.fake.calls.filter((c) => c.method === "transactions.updateTransactions").map((c) => c.args[0])).toEqual([h.planId, "last-used"]);
   });
 
+  it("skips a guarded item that was categorized in the meantime, while applying the others", async () => {
+    const account = accountFixture({ name: "Checking" });
+    const group = categoryGroupFixture({ name: "Everyday" });
+    const category = categoryFixture({ category_group_id: group.id, name: "Groceries" });
+    const h = setup(
+      planFixture({
+        accounts: [account],
+        categoryGroups: [group],
+        categories: [category],
+        transactions: [
+          transactionFixture({ account_id: account.id, date: "2024-01-05", amount: -1000 }),
+          transactionFixture({ account_id: account.id, date: "2024-01-06", amount: -2000 }),
+        ],
+      })
+    );
+    const seeded = (await h.fake.api.transactions.getTransactionsByAccount(h.planId, account.id)).data.transactions;
+    const [staleItem, freshItem] = seeded;
+
+    // Someone else categorizes staleItem between the read that produced this
+    // request and the call to apply it.
+    await h.fake.api.transactions.updateTransaction(h.planId, staleItem.id, { transaction: { category_id: category.id } as never });
+
+    const { data } = await h.call(updateTransactions, {
+      transactions: [
+        { id: staleItem.id, ifUncategorized: true, memo: "should be skipped" },
+        { id: freshItem.id, ifUncategorized: true, memo: "should apply" },
+      ],
+    });
+
+    expect(data.skipped_changed).toEqual([{ id: staleItem.id, reason: expect.stringContaining("no longer uncategorized") }]);
+    expect(data.updated).toHaveLength(1);
+    expect(data.updated[0]).toMatchObject({ id: freshItem.id, memo: "should apply" });
+    expect(h.fake.calls.filter((c) => c.method === "transactions.updateTransactions")).toHaveLength(1);
+  });
+
+  it("makes no write when every guarded item was changed in the meantime", async () => {
+    const account = accountFixture({ name: "Checking" });
+    const group = categoryGroupFixture({ name: "Everyday" });
+    const category = categoryFixture({ category_group_id: group.id, name: "Groceries" });
+    const h = setup(
+      planFixture({
+        accounts: [account],
+        categoryGroups: [group],
+        categories: [category],
+        transactions: [transactionFixture({ account_id: account.id, date: "2024-01-05", amount: -1000 })],
+      })
+    );
+    const [seeded] = (await h.fake.api.transactions.getTransactionsByAccount(h.planId, account.id)).data.transactions;
+    await h.fake.api.transactions.updateTransaction(h.planId, seeded.id, { transaction: { category_id: category.id } as never });
+
+    const { data } = await h.call(updateTransactions, {
+      transactions: [{ id: seeded.id, ifUncategorized: true, memo: "should be skipped" }],
+    });
+
+    expect(data.skipped_changed).toEqual([{ id: seeded.id, reason: expect.stringContaining("no longer uncategorized") }]);
+    expect(data.updated).toEqual([]);
+    expect(h.fake.calls.some((c) => c.method === "transactions.updateTransactions")).toBe(false);
+  });
+
+  it("applies a guarded item normally when it is still uncategorized, with one extra read", async () => {
+    const account = accountFixture({ name: "Checking" });
+    const group = categoryGroupFixture({ name: "Everyday" });
+    const category = categoryFixture({ category_group_id: group.id, name: "Groceries" });
+    const h = setup(
+      planFixture({
+        accounts: [account],
+        categoryGroups: [group],
+        categories: [category],
+        transactions: [transactionFixture({ account_id: account.id, date: "2024-01-05", amount: -1000 })],
+      })
+    );
+    const [seeded] = (await h.fake.api.transactions.getTransactionsByAccount(h.planId, account.id)).data.transactions;
+
+    const { data } = await h.call(updateTransactions, {
+      transactions: [{ id: seeded.id, ifUncategorized: true, category: "Groceries" }],
+    });
+
+    expect(data.updated[0]).toMatchObject({ category: "Groceries" });
+    expect(data.skipped_changed).toBeUndefined();
+    expect(h.fake.calls.filter((c) => c.method === "transactions.getTransactions")).toHaveLength(1);
+  });
+
+  it("does not make the extra read when no item is guarded", async () => {
+    const account = accountFixture({ name: "Checking" });
+    const h = setup(
+      planFixture({ accounts: [account], transactions: [transactionFixture({ account_id: account.id, date: "2024-01-05", amount: -1000 })] })
+    );
+    const [seeded] = (await h.fake.api.transactions.getTransactionsByAccount(h.planId, account.id)).data.transactions;
+
+    await h.call(updateTransactions, { transactions: [{ id: seeded.id, memo: "a" }] });
+
+    expect(h.fake.calls.some((c) => c.method === "transactions.getTransactions")).toBe(false);
+  });
+
   it("names the offending item when a name does not resolve", async () => {
     const account = accountFixture({ name: "Checking" });
     const h = setup(
@@ -315,5 +409,23 @@ describe("ynab_update_transactions", () => {
 
     expect(result).toMatchObject({ isError: true });
     expect(result.text).toMatch(/No category matches "Nope"/);
+  });
+
+  it("refuses a credit card payment category, which YNAB would silently drop", async () => {
+    const checking = accountFixture({ name: "Checking" });
+    const payments = categoryGroupFixture({ name: "Credit Card Payments", internal: true });
+    const visa = categoryFixture({ category_group_id: payments.id, name: "Visa" });
+    const h = setup(
+      planFixture({
+        accounts: [checking],
+        categoryGroups: [payments],
+        categories: [visa],
+        transactions: [transactionFixture({ account_id: checking.id, date: "2024-02-15", amount: -5000 })],
+      })
+    );
+    const [txn] = (await h.fake.api.transactions.getTransactions(h.planId)).data.transactions;
+    const result = await h.call(updateTransactions, { transactions: [{ id: txn.id, category: "Visa" }] });
+    expect(result.isError).toBe(true);
+    expect(result.text).toMatch(/credit card payment category/);
   });
 });
