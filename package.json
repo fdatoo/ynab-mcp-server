@@ -1,6 +1,6 @@
 {
-  "name": "ynab-mcp-server",
-  "version": "0.2.0",
+  "name": "@fdatoo/ynab-mcp-server",
+  "version": "1.0.0",
   "description": "MCP server for managing a YNAB plan: transactions, categories, reconciliation and reports",
   "author": "Caleb LeNoir <caleb.lenoir@hey.com>",
   "type": "module",

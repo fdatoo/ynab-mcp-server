@@ -5,9 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.2.0] - 2026-09-27
+## [1.0.0] - 2026-09-27
 
-### Changed (breaking)
+First release of the fork, published as `@fdatoo/ynab-mcp-server`. It branches from upstream 0.1.2; upstream's later 0.2.x and 0.3.0 releases are a separate line and are not included.
+
+### Changed (breaking, relative to upstream 0.1.2)
 - Tools consolidated and renamed. `ynab_get_transactions` and `ynab_get_unapproved_transactions` become `ynab_search_transactions`; `ynab_create_transaction` becomes `ynab_create_transactions`; `ynab_update_transaction` becomes `ynab_update_transactions`; `ynab_approve_transaction` and `ynab_bulk_approve_transactions` become `ynab_approve_transactions`; `ynab_update_category_budget` becomes `ynab_assign`; `ynab_list_budgets` becomes `ynab_list_plans`.
 - Amounts are in the plan's currency. Inputs are positive with a required `direction`; outputs are signed numbers.
 - Tool parameters say `planId`. `YNAB_PLAN_ID` is the new default-plan variable; `YNAB_BUDGET_ID` still works. Without either, YNAB's last-used plan is used.
