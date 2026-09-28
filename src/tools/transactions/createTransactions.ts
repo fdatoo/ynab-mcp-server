@@ -17,7 +17,7 @@ import { formatTransaction } from "../format.js";
 import { payeeFields, splitLine } from "./shared.js";
 import { toMilliunits, type Currency } from "../../ynab/money.js";
 
-const newTransaction = z.object({
+const newTransaction = z.strictObject({
   account: accountRef,
   date: dateParam.describe("Transaction date (YYYY-MM-DD). Future dates are not allowed; use a scheduled transaction."),
   amount: amountParam,

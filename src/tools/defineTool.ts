@@ -47,3 +47,38 @@ export async function runTool<Shape extends z.ZodRawShape>(
     return { isError: true, content: [{ type: "text", text: toYnabError(error).message }] };
   }
 }
+
+/**
+ * The schema the server advertises and validates against. It is strict, so a
+ * misnamed argument (such as the old budgetId) fails instead of being dropped
+ * and silently falling back to the default plan. Optional fields also accept
+ * null, which some clients send for "not given"; fields that already accept
+ * null keep their own meaning for it (for example "clear the memo").
+ */
+export function wireSchema<Shape extends z.ZodRawShape>(tool: Tool<Shape>) {
+  const shape: Record<string, z.ZodType> = {};
+  for (const [key, field] of Object.entries(tool.inputSchema) as Array<[string, z.ZodType]>) {
+    if (!nullMeansOmitted(field)) shape[key] = field;
+    else shape[key] = field.description ? field.nullable().describe(field.description) : field.nullable();
+  }
+  return z.object(shape).strict();
+}
+
+function nullMeansOmitted(field: z.ZodType): boolean {
+  return field.safeParse(undefined).success && !field.safeParse(null).success;
+}
+
+/**
+ * Turns validated wire input into handler input: nulls standing in for
+ * "not given" are dropped, then the tool's own schema applies its defaults.
+ */
+export function toHandlerInput<Shape extends z.ZodRawShape>(tool: Tool<Shape>, input: Record<string, unknown>) {
+  const cleaned: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(input)) {
+    const field = tool.inputSchema[key] as z.ZodType | undefined;
+    if (value === null && field && nullMeansOmitted(field)) continue;
+    cleaned[key] = value;
+  }
+  return z.object(tool.inputSchema).parse(cleaned);
+}
+

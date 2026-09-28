@@ -17,7 +17,7 @@ import { formatTransaction } from "../format.js";
 import { payeeFields, splitLine } from "./shared.js";
 import { toMilliunits, type Currency } from "../../ynab/money.js";
 
-const update = z.object({
+const update = z.strictObject({
   id: z.string().describe("Id of the transaction to update"),
   account: accountRef.optional().describe("Move the transaction to a different account"),
   date: dateParam.optional(),

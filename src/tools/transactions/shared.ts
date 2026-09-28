@@ -3,7 +3,7 @@ import type { ToolContext } from "../defineTool.js";
 import { amountParam, categoryRef, directionParam, payeeRef } from "../common.js";
 
 /** One line of a split, shared by creating a split and turning a transaction into one. */
-export const splitLine = z.object({
+export const splitLine = z.strictObject({
   amount: amountParam,
   direction: directionParam.optional().describe("Defaults to the transaction's direction"),
   category: categoryRef.optional(),

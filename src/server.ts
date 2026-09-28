@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { runTool, type Tool, type ToolContext } from "./tools/defineTool.js";
+import { runTool, toHandlerInput, wireSchema, type Tool, type ToolContext } from "./tools/defineTool.js";
 import { tools as allTools } from "./tools/registry.js";
 
 const { version } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as {
@@ -34,10 +34,10 @@ export function createServer(ctx: ToolContext, tools: Tool<any>[] = allTools): M
       {
         title: tool.title,
         description: tool.description,
-        inputSchema: tool.inputSchema,
+        inputSchema: wireSchema(tool),
         annotations: tool.annotations,
       },
-      (input: Record<string, unknown>) => runTool(tool, input, ctx)
+      (input: Record<string, unknown>) => runTool(tool, toHandlerInput(tool, input), ctx)
     );
   }
   return server;
