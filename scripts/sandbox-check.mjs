@@ -174,6 +174,11 @@ await step("assign, move money, and put it back", async () => {
   await call("ynab_assign", { category: "MCP Check B", month, amount: assigned(b0), mode: "set" });
 });
 
+await step("auto-assign previews without writing", async () => {
+  const res = await call("ynab_auto_assign", { month: today.slice(0, 7) });
+  assert.ok(Array.isArray(res.plan), `no plan in ${JSON.stringify(res)}`);
+});
+
 await step("scheduled: create, update one field, delete", async () => {
   const tomorrow = new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10);
   const res = await call("ynab_create_scheduled_transaction", {

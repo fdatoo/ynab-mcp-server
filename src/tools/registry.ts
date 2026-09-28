@@ -8,6 +8,7 @@ import { updateScheduledTransaction } from "./scheduled/updateScheduledTransacti
 import { deleteScheduledTransaction } from "./scheduled/deleteScheduledTransaction.js";
 import { listCategories } from "./categories/listCategories.js";
 import { assign } from "./categories/assign.js";
+import { autoAssign } from "./categories/autoAssign.js";
 import { createCategory } from "./categories/createCategory.js";
 import { createCategoryGroup } from "./categories/createCategoryGroup.js";
 import { getCategory } from "./categories/getCategory.js";
@@ -38,6 +39,7 @@ export const tools: Tool<any>[] = [
   createTransactions,
   approveTransactions,
   assign,
+  autoAssign,
   moveMoney,
   getCategory,
   createCategory,
